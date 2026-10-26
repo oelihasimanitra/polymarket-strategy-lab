@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MarketEvent",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_type",
+    "source",
+    "source_timestamp",
+    "received_timestamp"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "event_type": {
+      "enum": [
+        "trade",
+        "book_snapshot",
+        "book_delta",
+        "market_metadata",
+        "trader_activity",
+        "connection_status"
+      ]
+    },
+    "source": {
+      "type": "string"
+    },
+    "market_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "token_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source_timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "received_timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sequence_number": {
+      "type": [
+        "integer",
+        "string",
+        "null"
+      ]
+    },
+    "side": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "BUY",
+        "SELL",
+        null
+      ]
+    },
+    "price": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "size": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "bids": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "$ref": "#/$defs/level"
+      }
+    },
+    "asks": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "$ref": "#/$defs/level"
+      }
+    },
+    "currency": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "raw_payload_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "quality_flags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    }
+  },
+  "$defs": {
+    "level": {
+      "type": "object",
+      "required": [
+        "price",
+        "size"
+      ],
+      "properties": {
+        "price": {
+          "type": "number",
+          "minimum": 0
+        },
+        "size": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

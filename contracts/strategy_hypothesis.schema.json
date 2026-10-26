@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StrategyHypothesis",
+  "type": "object",
+  "required": [
+    "hypothesis_id",
+    "trader_id",
+    "observation_summary",
+    "hypothesis",
+    "unknowns",
+    "test_plan",
+    "created_at"
+  ],
+  "properties": {
+    "hypothesis_id": {
+      "type": "string"
+    },
+    "trader_id": {
+      "type": "string"
+    },
+    "observation_summary": {
+      "type": "string"
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "hypothesis": {
+      "type": "string"
+    },
+    "confidence": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "bias_risks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "entry_rules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "exit_rules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "risk_rules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "test_plan": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": false
+}

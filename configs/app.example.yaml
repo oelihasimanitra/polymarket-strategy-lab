@@ -1,0 +1,51 @@
+app:
+  name: "Polymarket Strategy Research Lab"
+  environment: "local"
+  paper_trading_only: true
+  timezone: "UTC"
+  log_level: "INFO"
+
+storage:
+  backend: "sqlite"
+  sqlite_path: "./data/polymarket_lab.sqlite3"
+  raw_payload_dir: "./data/raw"
+  keep_raw_payloads: true
+
+collection:
+  enabled: false
+  public_data_only: true
+  reconnect: true
+  max_retries: 10
+  stale_book_threshold_ms: 1500
+
+simulation:
+  enabled: false
+  order_types: ["taker"]
+  default_latency_ms: 500
+  latency_scenarios_ms:
+    optimistic: 100
+    central: 500
+    stress: 1500
+  book_liquidity_haircut:
+    optimistic: 0.0
+    central: 0.1
+    stress: 0.3
+  allow_partial_fills: true
+  allow_short_positions: false
+  require_verified_fee_schedule: true
+  max_position_fraction_of_equity: 0.10
+
+capital_scenarios:
+  currency: "USD"
+  values: [100, 250, 500, 1000, 2500, 5000, 10000]
+
+dashboard:
+  enabled: false
+  host: "127.0.0.1"
+  port: 8501
+  read_only: true
+
+safety:
+  real_orders_enabled: false
+  require_human_approval_for_scope_changes: true
+  redact_secrets_from_logs: true

@@ -1,0 +1,26 @@
+# Polymarket Strategy Research Lab — dépendances Python (V1)
+#
+# Modules de la bibliothèque standard (non listés ici, importables directement) :
+#   time, json, pprint, asyncio, datetime, logging, pathlib, sqlite3, csv, os, sys, argparse
+
+# Client HTTP pour appels REST API publics
+requests
+
+# Client WebSocket pour les flux de marché en temps réel (compatible asyncio)
+websockets
+
+# Analyse de données
+pandas
+numpy
+scipy
+
+# Tests
+pytest
+
+# Dashboard local
+streamlit
+plotly
+
+# Configuration YAML et variables d'environnement
+pyyaml
+python-dotenv

@@ -1,30 +1,26 @@
-# Polymarket Strategy Research Lab
+# Polymarket Strategy Research Lab — kit de développement
 
-Laboratoire local de recherche sur la reproductibilité de stratégies observées chez trois traders Polymarket actifs sur les marchés crypto à court terme.
+Ce kit prépare la prochaine étape : verrouiller contrats et interfaces avant de lancer les agents en parallèle.
 
-## Documents de cadrage
-- `PROJECT_SPEC.md` — objectifs, périmètre et critères de réussite.
-- `ARCHITECTURE.md` — modules, interfaces et stack.
-- `SIMULATION_RULES.md` — règles de paper trading taker.
-- `VALIDATION_PLAN.md` — validations technique, historique, en direct et benchmarks.
-- `CAHIER_DES_CHARGES.pdf` — version lisible du cahier des charges général.
+## Documents
+- `CLAUDE.md` : règles globales et garde-fous.
+- `COORDINATION.md` : responsabilités et ordre de lancement des six agents.
+- `DECISIONS.md` : décisions validées et questions ouvertes.
+- `ROADMAP.md` : phases de réalisation.
+- `TASK_TEMPLATE.md`, `EXEMPLES_TACHES.md` : tâches reproductibles.
+- `agents/` : prompts de mission par agent.
+- `skills/` : pratiques réutilisables.
+- `contracts/` : contrats JSON.
+- `schemas/initial_db_schema.sql` : proposition de schéma SQLite.
+- `configs/app.example.yaml` : configuration exemple.
+- `tasks/TASK-001_ARCHITECTURE_REVIEW.md` : première tâche à lancer.
 
-## Périmètre initial
-- Windows local.
-- 3 traders.
-- Marchés crypto.
-- Capital virtuel : 100 à 10 000 USD/USDC.
-- Paper trading uniquement.
-- Taker uniquement en V1.
-- Benchmark indépendant.
-- Dashboard local.
+## Ordre recommandé
+1. Extraire ce kit à la racine du dépôt de projet.
+2. Copier les documents de cadrage précédents à la racine si ce n'est pas déjà fait.
+3. Initialiser Git.
+4. Ouvrir une session Claude Code dédiée à A0 et lui donner `tasks/TASK-001_ARCHITECTURE_REVIEW.md`.
+5. Examiner les modifications et valider les contrats.
+6. Seulement après cette validation, lancer A1, A2, A3, A4 et A5 sur des tâches séparées.
 
-## État
-Documents de cadrage v0.1. Aucun logiciel de trading n'est encore implémenté par ces documents.
-
-## Démarrage recommandé
-1. Lire le cahier des charges PDF.
-2. Valider les documents Markdown.
-3. Vérifier les interfaces et règles de frais dans la documentation officielle au moment du développement.
-4. Créer le dépôt Git et les contrats de données.
-5. Développer et tester le collecteur avant le moteur de simulation.
+Les contrats et le SQL sont des propositions de départ, pas des interfaces définitivement validées. Les endpoints et règles Polymarket doivent être vérifiés dans la documentation officielle au moment de l'implémentation.
