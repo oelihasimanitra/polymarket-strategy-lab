@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polymarket-strategy-lab.invalid/contracts/fee_schedule.schema.json",
+  "title": "FeeSchedule",
+  "description": "Barème de frais daté, sourcé et versionné, contrat 1.0.0. Aucune valeur de frais Polymarket n'est affirmée dans ce fichier : le contrat impose seulement la structure et le statut de vérification. Un fill ne peut être comptabilisé qu'avec un barème référencé. Les taux sont en micro-unités : 1 000 000 = 100 %.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "fee_schedule_id",
+    "verification_status",
+    "source_url",
+    "source_retrieved_at",
+    "effective_from",
+    "scope_type",
+    "scope_value",
+    "scope_evidence_ref",
+    "accounting_unit",
+    "maker_rate_micros",
+    "taker_rate_micros",
+    "fee_formula",
+    "fee_charge_unit",
+    "rounding_rule",
+    "rounding_increment_micros",
+    "notes",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "fee_schedule_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "verification_status": {
+      "enum": [
+        "verified",
+        "provisional",
+        "unverified"
+      ],
+      "description": "Seul verified permet de présenter un PnL net comme définitif. provisional et unverified doivent être affichés comme tels dans les rapports et le dashboard."
+    },
+    "source_url": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 512,
+      "description": "URL de la documentation officielle utilisée. Une fixture doit utiliser un domaine explicitement non réel (par exemple example.invalid)."
+    },
+    "source_title": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 512
+    },
+    "source_retrieved_at": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "effective_from": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "effective_to": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "scope_type": {
+      "enum": [
+        "global",
+        "category",
+        "market"
+      ]
+    },
+    "scope_value": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Valeur du périmètre : joker * pour global, nom de catégorie, ou market_id."
+    },
+    "scope_evidence_ref": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 512,
+      "description": "Référence précise prouvant que ce taux s'applique au périmètre visé. Obligatoire pour un barème verified de portée global ou category : un taux de catégorie n'est pas une preuve par marché."
+    },
+    "accounting_unit": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]{1,31}$",
+      "description": "Unité comptable du montant des frais. Doit correspondre à l'unité comptable de l'expérience. Ce n'est pas la devise de présentation."
+    },
+    "maker_rate_micros": {
+      "$ref": "#/$defs/rate_micros"
+    },
+    "taker_rate_micros": {
+      "$ref": "#/$defs/rate_micros"
+    },
+    "fee_formula": {
+      "enum": [
+        "none",
+        "linear_min_price_1mp",
+        "notional",
+        "per_share",
+        "custom"
+      ],
+      "description": "linear_min_price_1mp signifie taux × min(prix, 1 − prix) × quantité. La formule réellement applicable doit être confirmée dans la documentation officielle."
+    },
+    "custom_formula_ref": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 512
+    },
+    "fee_charge_unit": {
+      "enum": [
+        "collateral",
+        "outcome_token"
+      ],
+      "description": "Unité dans laquelle le frais est prélevé. Cette distinction change le grand livre : un frais en parts réduit la position et non le cash."
+    },
+    "rounding_rule": {
+      "enum": [
+        "half_even_micros",
+        "half_up_micros",
+        "floor_micros",
+        "ceil_micros",
+        "exchange_specific"
+      ]
+    },
+    "rounding_increment_micros": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 4096
+    },
+    "supersedes_fee_schedule_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 128
+    },
+    "created_at": {
+      "$ref": "#/$defs/timestamp"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "fee_formula"
+        ],
+        "properties": {
+          "fee_formula": {
+            "const": "none"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "maker_rate_micros": {
+            "const": 0
+          },
+          "taker_rate_micros": {
+            "const": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "fee_formula"
+        ],
+        "properties": {
+          "fee_formula": {
+            "const": "custom"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "custom_formula_ref"
+        ],
+        "properties": {
+          "custom_formula_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "effective_to"
+        ],
+        "properties": {
+          "effective_to": {
+            "type": "string"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "effective_to": {
+            "$ref": "#/$defs/timestamp"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "verification_status"
+        ],
+        "properties": {
+          "verification_status": {
+            "const": "verified"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "source_url": {
+            "type": "string",
+            "pattern": "^https://"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "verification_status",
+          "scope_type"
+        ],
+        "properties": {
+          "verification_status": {
+            "const": "verified"
+          },
+          "scope_type": {
+            "enum": [
+              "global",
+              "category"
+            ]
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "scope_evidence_ref"
+        ],
+        "properties": {
+          "scope_evidence_ref": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$"
+    },
+    "rate_micros": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000
+    }
+  }
+}

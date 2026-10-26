@@ -1,0 +1,71 @@
+{
+  "schema_version": "1.0.0",
+  "experiment_id": "exp_fixture_001",
+  "strategy": {
+    "strategy_id": "strat_fixture_001",
+    "version": "0.1.0"
+  },
+  "period": {
+    "type": "research",
+    "start_time": "2026-10-01T12:00:00.000000Z",
+    "end_time": "2026-10-01T13:00:00.000000Z"
+  },
+  "capital": {
+    "initial_micros": 1000000000,
+    "accounting_unit": "pUSD",
+    "presentation_currency": "pUSD",
+    "presentation_conversion": null
+  },
+  "data": {
+    "manifest_id": "manifest_fixture_001",
+    "cutoff_received_timestamp": "2026-10-01T13:00:00.000000Z",
+    "filters": {
+      "sources": [
+        "fixture"
+      ],
+      "market_ids": [
+        "mkt_fixture_001"
+      ],
+      "token_ids": [
+        "tok_fixture_yes",
+        "tok_fixture_no"
+      ],
+      "event_types": [
+        "book_snapshot",
+        "book_delta",
+        "trade",
+        "market_metadata"
+      ],
+      "notes": "Fixture uniquement."
+    }
+  },
+  "execution_assumptions": {
+    "contract_type": "execution_assumptions",
+    "schema_version": "1.0.0",
+    "latency_ms": 500,
+    "latency_jitter_ms": 100,
+    "latency_distribution": "uniform",
+    "liquidity_haircut_bps": 1000,
+    "max_book_age_ms": 1500,
+    "max_depth_levels": null,
+    "random_seed": 42,
+    "rng_implementation": "python3.15-random-mt19937",
+    "rounding_rule": "half_up_micros",
+    "notes": "Hypothèses fictives, scénario central."
+  },
+  "risk_limits": {
+    "max_position_fraction_bps": 1000,
+    "max_open_positions": 5,
+    "max_exposure_micros": 500000000,
+    "allow_short_positions": false
+  },
+  "fees": {
+    "default_fee_schedule_id": "fee_fixture_001",
+    "status": "unverified"
+  },
+  "code_version": "git:fixture-0000000",
+  "config_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "status": "planned",
+  "created_at": "2026-10-01T11:00:00.000000Z",
+  "completed_at": null
+}

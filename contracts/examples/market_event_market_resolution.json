@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0.0",
+  "event_id": "evt_fixture_resolution_001",
+  "event_type": "market_resolution",
+  "source": "fixture",
+  "source_event_id": "fixture-resolution-001",
+  "source_timestamp": "2026-10-02T00:00:05.000000Z",
+  "received_timestamp": "2026-10-02T00:00:05.200000Z",
+  "market_id": "mkt_fixture_001",
+  "quality_flags": [
+    "fixture"
+  ],
+  "market_resolution": {
+    "resolution_status": "RESOLVED",
+    "winning_token_id": "tok_fixture_yes",
+    "resolved_at": "2026-10-02T00:00:05.000000Z",
+    "resolution_source": "fixture://resolution",
+    "settlement_asset": "USDC",
+    "payout_per_share_micros": 1000000,
+    "conversion_rule": {
+      "from_asset": "pUSD",
+      "to_asset": "USDC",
+      "rate_micros": 1000000,
+      "source": "fixture://conversion",
+      "recorded_at": "2026-10-02T00:00:05.000000Z",
+      "verification_status": "unverified",
+      "notes": "FICTIF — taux 1:1 non vérifié, uniquement pour tester le contrat."
+    },
+    "notes": "Résolution fictive."
+  }
+}

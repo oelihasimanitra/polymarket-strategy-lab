@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0.0",
+  "event_id": "evt_fixture_connection_001",
+  "event_type": "connection_status",
+  "source": "fixture",
+  "source_event_id": "fixture-connection-001",
+  "source_timestamp": "2026-10-01T11:58:00.000000Z",
+  "received_timestamp": "2026-10-01T11:58:00.010000Z",
+  "quality_flags": [
+    "fixture"
+  ],
+  "connection_status": {
+    "stream_id": "fixture_stream_001",
+    "status": "DISCONNECTED",
+    "reason": "Test de coupure fictif.",
+    "gap_start_timestamp": "2026-10-01T11:58:00.000000Z",
+    "gap_end_timestamp": "2026-10-01T11:58:05.000000Z"
+  }
+}

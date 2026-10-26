@@ -1,0 +1,683 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polymarket-strategy-lab.invalid/contracts/execution.schema.json",
+  "title": "ExecutionContracts",
+  "description": "Contrats d'exécution simulée, version 1.0.0. Le fichier racine accepte l'un des objets suivants, discriminés par contract_type : order_intent, execution_assumptions, execution_estimate, fill, execution_result. Tous les montants, prix et tailles sont des entiers en micro-unités (1e-6). Aucun ordre réel ne peut être représenté par ces contrats.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/order_intent"
+    },
+    {
+      "$ref": "#/$defs/execution_assumptions"
+    },
+    {
+      "$ref": "#/$defs/execution_estimate"
+    },
+    {
+      "$ref": "#/$defs/fill"
+    },
+    {
+      "$ref": "#/$defs/execution_result"
+    }
+  ],
+  "$defs": {
+    "contract_type": {
+      "type": "string",
+      "enum": [
+        "order_intent",
+        "execution_assumptions",
+        "execution_estimate",
+        "fill",
+        "execution_result"
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$"
+    },
+    "reference_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "price_micros": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000
+    },
+    "side": {
+      "enum": [
+        "BUY",
+        "SELL"
+      ]
+    },
+    "rejection_reason": {
+      "enum": [
+        "stale_book",
+        "missing_book",
+        "insufficient_liquidity",
+        "missing_fee_schedule",
+        "risk_limit",
+        "invalid_order",
+        "other"
+      ]
+    },
+    "rounding_rule": {
+      "enum": [
+        "half_even_micros",
+        "half_up_micros",
+        "floor_micros",
+        "ceil_micros",
+        "exchange_specific"
+      ]
+    },
+    "fee_formula": {
+      "enum": [
+        "none",
+        "linear_min_price_1mp",
+        "notional",
+        "per_share",
+        "custom"
+      ]
+    },
+    "fee_unit": {
+      "enum": [
+        "collateral",
+        "outcome_token"
+      ]
+    },
+    "order_intent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_type",
+        "schema_version",
+        "intent_id",
+        "experiment_id",
+        "strategy_id",
+        "strategy_version",
+        "market_id",
+        "token_id",
+        "side",
+        "quantity_micros",
+        "limit_price_micros",
+        "decision_timestamp",
+        "idempotency_key"
+      ],
+      "properties": {
+        "contract_type": {
+          "const": "order_intent"
+        },
+        "schema_version": {
+          "const": "1.0.0"
+        },
+        "intent_id": {
+          "$ref": "#/$defs/reference_id"
+        },
+        "experiment_id": {
+          "$ref": "#/$defs/reference_id"
+        },
+        "strategy_id": {
+          "$ref": "#/$defs/reference_id"
+        },
+        "strategy_version": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"
+        },
+        "market_id": {
+          "$ref": "#/$defs/reference_id"
+        },
+        "token_id": {
+          "$ref": "#/$defs/reference_id"
+        },
+        "side": {
+          "$ref": "#/$defs/side"
+        },
+        "quantity_micros": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "limit_price_micros": {
+          "$ref": "#/$defs/price_micros",
+          "description": "Obligatoire, même pour un ordre dit « market » : la borne de prix protège contre un slippage non borné. Un ordre sans limite doit utiliser 0 ou 1000000 explicitement."
+        },
+        "decision_timestamp": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "idempotency_key": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "rationale": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 2048
+        },
+        "tags": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+    "execution_assumptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_type",
+        "schema_version",
+        "latency_ms",
+        "latency_jitter_ms",
+        "latency_distribution",
+        "liquidity_haircut_bps",
+        "max_book_age_ms",
+        "random_seed",
+        "rng_implementation",
+        "rounding_rule"
+      ],
+      "properties": {
+        "contract_type": {
+          "const": "execution_assumptions"
+        },
+        "schema_version": {
+          "const": "1.0.0"
+        },
+        "latency_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "latency_jitter_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "latency_distribution": {
+          "enum": [
+            "fixed",
+            "uniform",
+            "normal"
+          ]
+        },
+        "liquidity_haircut_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "max_book_age_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_depth_levels": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "random_seed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rng_implementation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Implémentation exacte du générateur, par exemple python3.15-random-mt19937. Deux implémentations différentes ne produisent pas les mêmes tirages."
+        },
+        "rounding_rule": {
+          "$ref": "#/$defs/rounding_rule"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 2048
+        }
+      }
+    },
+    "level_consumption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "level_index",
+        "price_micros",
+        "available_size_micros",
+        "consumed_size_micros"
+      ],
+      "properties": {
+        "level_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "price_micros": {
+          "$ref": "#/$defs/price_micros"
+        },
+        "available_size_micros": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "consumed_size_micros": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "excluded_size_micros": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Liquidité retirée par le haircut ou par une hypothèse de profondeur ; consommée ni par l'ordre ni par le carnet affiché."
+        }
+      }
+    },
+    "fee_calculation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fee_schedule_id",
+        "fee_formula",
+        "rate_micros",
+        "fee_unit",
+        "fee_amount_micros",
+        "rounding_rule"
+      ],
+      "properties": {
+        "fee_schedule_id": {
+          "$ref": "#/$defs/reference_id"
+        },
+        "fee_formula": {
+          "$ref": "#/$defs/fee_formula"
+        },
+        "rate_micros": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000,
+          "description": "Taux en micro-unités : 1 000 000 = 100 %."
+        },
+        "fee_unit": {
+          "$ref": "#/$defs/fee_unit"
+        },
+        "fee_amount_micros": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rounding_rule": {
+          "$ref": "#/$defs/rounding_rule"
+        },
+        "formula_inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "price_micros": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            "size_micros": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "notional_micros": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            },
+            "min_price_complement_micros": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 1000000
+            }
+          }
+        }
+      }
+    },
+    "execution_estimate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_type",
+        "schema_version",
+        "estimate_id",
+        "intent_id",
+        "book_snapshot_event_id",
+        "arrival_timestamp",
+        "status",
+        "accounting_unit",
+        "executable_size_micros",
+        "unfilled_size_micros",
+        "levels",
+        "assumptions"
+      ],
+      "properties": {
+        "contract_type": {
+          "const": "execution_estimate"
+        },
+        "schema_version": {
+          "const": "1.0.0"
+        },
+        "estimate_id": {
+          "$ref": "#/$defs/reference_id"
+        },
+        "intent_id": {
+          "$ref": "#/$defs/reference_id"
+        },
+        "book_snapshot_event_id": {
+          "type": "string",
+          "pattern": "^evt_[A-Za-z0-9_.:-]{8,128}$"
+        },
+        "arrival_timestamp": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "status": {
+          "enum": [
+            "accepted",
+            "partial",
+            "rejected"
+          ]
+        },
+        "accounting_unit": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9._-]{1,31}$",
+          "description": "Unité comptable des frais et notionnels de cette estimation. Ce n'est pas la devise de présentation."
+        },
+        "executable_size_micros": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unfilled_size_micros": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "vwap_micros": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/price_micros"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "levels": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/level_consumption"
+          }
+        },
+        "assumptions": {
+          "$ref": "#/$defs/execution_assumptions"
+        },
+        "fee_calculation": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/fee_calculation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rejection_reason": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/rejection_reason"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "const": "rejected"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "executable_size_micros": {
+                "const": 0
+              },
+              "vwap_micros": {
+                "type": "null"
+              },
+              "fee_calculation": {
+                "type": "null"
+              }
+            },
+            "required": [
+              "rejection_reason"
+            ]
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "enum": [
+                  "accepted",
+                  "partial"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "vwap_micros",
+              "fee_calculation"
+            ],
+            "properties": {
+              "vwap_micros": {
+                "$ref": "#/$defs/price_micros"
+              },
+              "fee_calculation": {
+                "$ref": "#/$defs/fee_calculation"
+              },
+              "levels": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "fill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_type",
+        "schema_version",
+        "fill_id",
+        "order_id",
+        "fill_index",
+        "level_index",
+        "price_micros",
+        "size_micros",
+        "notional_micros",
+        "accounting_unit",
+        "fee_calculation",
+        "book_snapshot_event_id",
+        "fill_timestamp"
+      ],
+      "properties": {
+        "contract_type": {
+          "const": "fill"
+        },
+        "schema_version": {
+          "const": "1.0.0"
+        },
+        "fill_id": {
+          "$ref": "#/$defs/reference_id"
+        },
+        "order_id": {
+          "$ref": "#/$defs/reference_id"
+        },
+        "fill_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "level_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "price_micros": {
+          "$ref": "#/$defs/price_micros"
+        },
+        "size_micros": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "notional_micros": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "accounting_unit": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9._-]{1,31}$",
+          "description": "Unité comptable du notionnel et des frais en collatéral. Doit correspondre à l'unité de l'expérience."
+        },
+        "fee_calculation": {
+          "$ref": "#/$defs/fee_calculation"
+        },
+        "book_snapshot_event_id": {
+          "type": "string",
+          "pattern": "^evt_[A-Za-z0-9_.:-]{8,128}$"
+        },
+        "fill_timestamp": {
+          "$ref": "#/$defs/timestamp"
+        }
+      }
+    },
+    "execution_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_type",
+        "schema_version",
+        "order_id",
+        "intent_id",
+        "status",
+        "estimate",
+        "fills"
+      ],
+      "properties": {
+        "contract_type": {
+          "const": "execution_result"
+        },
+        "schema_version": {
+          "const": "1.0.0"
+        },
+        "order_id": {
+          "$ref": "#/$defs/reference_id"
+        },
+        "intent_id": {
+          "$ref": "#/$defs/reference_id"
+        },
+        "status": {
+          "enum": [
+            "filled",
+            "partially_filled",
+            "rejected",
+            "expired"
+          ]
+        },
+        "estimate": {
+          "$ref": "#/$defs/execution_estimate"
+        },
+        "fills": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fill"
+          }
+        },
+        "rejection_reason": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/rejection_reason"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "$ref": "#/$defs/timestamp"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "enum": [
+                  "rejected",
+                  "expired"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fills": {
+                "maxItems": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "enum": [
+                  "filled",
+                  "partially_filled"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "fills": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

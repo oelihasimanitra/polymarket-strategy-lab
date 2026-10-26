@@ -1,0 +1,20 @@
+{
+  "contract_type": "order_intent",
+  "schema_version": "1.0.0",
+  "intent_id": "intent_fixture_001",
+  "experiment_id": "exp_fixture_001",
+  "strategy_id": "strat_fixture_001",
+  "strategy_version": "0.1.0",
+  "market_id": "mkt_fixture_001",
+  "token_id": "tok_fixture_yes",
+  "side": "BUY",
+  "quantity_micros": 100000000,
+  "limit_price_micros": 550000,
+  "decision_timestamp": "2026-10-01T12:00:01.100000Z",
+  "idempotency_key": "exp_fixture_001:strat_fixture_001:0.1.0:20261001T120001100000Z:BUY:tok_fixture_yes",
+  "rationale": "Ordre fictif pour test de contrat.",
+  "tags": [
+    "fixture"
+  ],
+  "created_at": "2026-10-01T12:00:01.100000Z"
+}

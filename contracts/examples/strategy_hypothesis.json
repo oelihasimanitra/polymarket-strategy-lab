@@ -1,0 +1,31 @@
+{
+  "schema_version": "1.0.0",
+  "hypothesis_id": "hyp_fixture_001",
+  "trader_id": "trader_fixture_a",
+  "observation_summary": "Fixture : observations fictives, aucune donnée réelle.",
+  "evidence_refs": [
+    "fixture://events/2026-10-01"
+  ],
+  "hypothesis": "Hypothèse fictive destinée uniquement à valider le contrat.",
+  "confidence": "unknown",
+  "status": "draft",
+  "unknowns": [
+    "Aucune donnée réelle disponible."
+  ],
+  "bias_risks": [
+    "Biais du survivant non mesurable sur une fixture."
+  ],
+  "entry_rules": [
+    "Règle fictive : entrer si le carnet est frais et le prix sous un seuil."
+  ],
+  "exit_rules": [
+    "Règle fictive : sortir à un prix cible ou à la résolution."
+  ],
+  "risk_rules": [
+    "Règle fictive : exposition maximale de 10 % de l'équité."
+  ],
+  "test_plan": "Valider le contrat uniquement ; aucune conclusion de performance.",
+  "implementation": null,
+  "supersedes_hypothesis_id": null,
+  "created_at": "2026-10-01T10:00:00.000000Z"
+}

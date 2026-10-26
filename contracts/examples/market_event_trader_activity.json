@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0.0",
+  "event_id": "evt_fixture_activity_001",
+  "event_type": "trader_activity",
+  "source": "fixture",
+  "source_event_id": "fixture-activity-001",
+  "source_timestamp": "2026-10-01T12:00:01.000000Z",
+  "received_timestamp": "2026-10-01T12:00:01.100000Z",
+  "market_id": "mkt_fixture_001",
+  "token_id": "tok_fixture_yes",
+  "accounting_unit": "pUSD",
+  "quality_flags": [
+    "fixture"
+  ],
+  "trader_activity": {
+    "trader_id": "trader_fixture_a",
+    "activity_type": "TRADE",
+    "side": "BUY",
+    "price_micros": 530000,
+    "size_micros": 40000000,
+    "tx_hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "notes": "Activité fictive pour tests de contrat."
+  }
+}

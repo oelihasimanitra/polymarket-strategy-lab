@@ -1,0 +1,529 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polymarket-strategy-lab.invalid/contracts/experiment.schema.json",
+  "title": "ExperimentDefinition",
+  "description": "Enveloppe de reproductibilité d'une expérience, contrat 1.0.0. Elle fige la stratégie, la fenêtre, le capital, le manifeste de données, les hypothèses d'exécution, les limites de risque, le barème de frais, la version du code et le hash de configuration. Le bloc execution_assumptions doit rester identique à execution.schema.json#/$defs/execution_assumptions ; A5 doit tester cette égalité.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "experiment_id",
+    "strategy",
+    "period",
+    "capital",
+    "data",
+    "execution_assumptions",
+    "risk_limits",
+    "fees",
+    "code_version",
+    "config_hash",
+    "status",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "experiment_id": {
+      "$ref": "#/$defs/reference_id"
+    },
+    "strategy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "strategy_id",
+        "version"
+      ],
+      "properties": {
+        "strategy_id": {
+          "$ref": "#/$defs/reference_id"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"
+        }
+      }
+    },
+    "period": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "start_time",
+        "end_time"
+      ],
+      "properties": {
+        "type": {
+          "enum": [
+            "research",
+            "validation",
+            "final_test",
+            "paper_live"
+          ]
+        },
+        "start_time": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "end_time": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "enum": [
+                  "research",
+                  "validation",
+                  "final_test"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "end_time": {
+                "$ref": "#/$defs/timestamp"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "capital": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "initial_micros",
+        "accounting_unit",
+        "presentation_currency"
+      ],
+      "properties": {
+        "initial_micros": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Capital virtuel en micro-unités de l'unité comptable. La plage 100–10 000 est un choix de périmètre (D-001), pas une contrainte de contrat."
+        },
+        "accounting_unit": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9._-]{1,31}$",
+          "description": "Unité de tous les montants du ledger. Une seule unité par expérience. Ce n'est pas la devise de présentation."
+        },
+        "presentation_currency": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9._-]{1,31}$",
+          "description": "Devise d'affichage uniquement. Si elle diffère de accounting_unit, presentation_conversion est obligatoire et doit être vérifiée."
+        },
+        "presentation_conversion": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/conversion_rule"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_id",
+        "cutoff_received_timestamp",
+        "filters"
+      ],
+      "properties": {
+        "manifest_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/reference_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cutoff_received_timestamp": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "filters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "sources",
+            "market_ids",
+            "token_ids",
+            "event_types"
+          ],
+          "properties": {
+            "sources": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "gamma_api",
+                  "clob_api",
+                  "data_api",
+                  "clob_ws",
+                  "fixture"
+                ]
+              },
+              "description": "Sources incluses dans le manifeste. Les responsabilités ne sont pas interchangeables ; ne pas mélanger des champs de sources différentes sans normalisation explicite."
+            },
+            "market_ids": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/reference_id"
+              }
+            },
+            "token_ids": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/reference_id"
+              }
+            },
+            "event_types": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "enum": [
+                  "trade",
+                  "book_snapshot",
+                  "book_delta",
+                  "trader_activity",
+                  "market_metadata",
+                  "market_resolution",
+                  "connection_status"
+                ]
+              }
+            },
+            "notes": {
+              "type": "string",
+              "maxLength": 2048
+            }
+          }
+        }
+      }
+    },
+    "execution_assumptions": {
+      "$ref": "#/$defs/execution_assumptions"
+    },
+    "risk_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_position_fraction_bps",
+        "max_open_positions",
+        "max_exposure_micros",
+        "allow_short_positions"
+      ],
+      "properties": {
+        "max_position_fraction_bps": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000,
+          "description": "Fraction maximale de l'équité par position, en points de base (1000 = 10 %)."
+        },
+        "max_open_positions": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_exposure_micros": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "allow_short_positions": {
+          "const": false
+        }
+      }
+    },
+    "fees": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "default_fee_schedule_id",
+        "status"
+      ],
+      "properties": {
+        "default_fee_schedule_id": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/reference_id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "verified",
+            "provisional",
+            "unverified",
+            "not_required"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "enum": [
+                  "verified",
+                  "provisional"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "default_fee_schedule_id": {
+                "$ref": "#/$defs/reference_id"
+              }
+            },
+            "required": [
+              "default_fee_schedule_id"
+            ]
+          }
+        }
+      ]
+    },
+    "code_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "config_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "status": {
+      "enum": [
+        "planned",
+        "running",
+        "completed",
+        "aborted",
+        "invalid"
+      ]
+    },
+    "created_at": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "completed_at": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/timestamp"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "period"
+        ],
+        "properties": {
+          "period": {
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "enum": [
+                  "research",
+                  "validation",
+                  "final_test"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "required": [
+              "manifest_id",
+              "cutoff_received_timestamp"
+            ],
+            "properties": {
+              "manifest_id": {
+                "$ref": "#/$defs/reference_id"
+              },
+              "cutoff_received_timestamp": {
+                "$ref": "#/$defs/timestamp"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$"
+    },
+    "reference_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "conversion_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from_asset",
+        "to_asset",
+        "rate_micros",
+        "source",
+        "recorded_at",
+        "verification_status"
+      ],
+      "properties": {
+        "from_asset": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9._-]{1,31}$"
+        },
+        "to_asset": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9._-]{1,31}$"
+        },
+        "rate_micros": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "recorded_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "verification_status": {
+          "enum": [
+            "verified",
+            "provisional",
+            "unverified"
+          ]
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 2048
+        }
+      }
+    },
+    "execution_assumptions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_type",
+        "schema_version",
+        "latency_ms",
+        "latency_jitter_ms",
+        "latency_distribution",
+        "liquidity_haircut_bps",
+        "max_book_age_ms",
+        "random_seed",
+        "rng_implementation",
+        "rounding_rule"
+      ],
+      "properties": {
+        "contract_type": {
+          "const": "execution_assumptions"
+        },
+        "schema_version": {
+          "const": "1.0.0"
+        },
+        "latency_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "latency_jitter_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "latency_distribution": {
+          "enum": [
+            "fixed",
+            "uniform",
+            "normal"
+          ]
+        },
+        "liquidity_haircut_bps": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000
+        },
+        "max_book_age_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_depth_levels": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "random_seed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rng_implementation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "rounding_rule": {
+          "enum": [
+            "half_even_micros",
+            "half_up_micros",
+            "floor_micros",
+            "ceil_micros",
+            "exchange_specific"
+          ]
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 2048
+        }
+      }
+    }
+  }
+}

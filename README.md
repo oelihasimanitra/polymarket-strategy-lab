@@ -1,26 +1,43 @@
-# Polymarket Strategy Research Lab — kit de développement
+# Polymarket Strategy Research Lab
 
-Ce kit prépare la prochaine étape : verrouiller contrats et interfaces avant de lancer les agents en parallèle.
+Laboratoire local de recherche sur la reproductibilité de stratégies observées chez trois traders Polymarket actifs sur les marchés crypto à court terme.
 
-## Documents
-- `CLAUDE.md` : règles globales et garde-fous.
-- `COORDINATION.md` : responsabilités et ordre de lancement des six agents.
-- `DECISIONS.md` : décisions validées et questions ouvertes.
-- `ROADMAP.md` : phases de réalisation.
-- `TASK_TEMPLATE.md`, `EXEMPLES_TACHES.md` : tâches reproductibles.
-- `agents/` : prompts de mission par agent.
-- `skills/` : pratiques réutilisables.
-- `contracts/` : contrats JSON.
-- `schemas/initial_db_schema.sql` : proposition de schéma SQLite.
-- `configs/app.example.yaml` : configuration exemple.
-- `tasks/TASK-001_ARCHITECTURE_REVIEW.md` : première tâche à lancer.
+## Documents de cadrage
+- `PROJECT_SPEC.md` — objectifs, périmètre et critères de réussite.
+- `ARCHITECTURE.md` — modules, interfaces et stack.
+- `SIMULATION_RULES.md` — règles de paper trading taker.
+- `VALIDATION_PLAN.md` — validations technique, historique, en direct et benchmarks.
+- `CAHIER_DES_CHARGES.pdf` — version lisible du cahier des charges général.
 
-## Ordre recommandé
-1. Extraire ce kit à la racine du dépôt de projet.
-2. Copier les documents de cadrage précédents à la racine si ce n'est pas déjà fait.
-3. Initialiser Git.
-4. Ouvrir une session Claude Code dédiée à A0 et lui donner `tasks/TASK-001_ARCHITECTURE_REVIEW.md`.
-5. Examiner les modifications et valider les contrats.
-6. Seulement après cette validation, lancer A1, A2, A3, A4 et A5 sur des tâches séparées.
+## Périmètre initial
+- Windows local.
+- 3 traders.
+- Marchés crypto.
+- Capital virtuel : 100 à 10 000 USD/USDC.
+- Paper trading uniquement.
+- Taker uniquement en V1.
+- Benchmark indépendant.
+- Dashboard local.
 
-Les contrats et le SQL sont des propositions de départ, pas des interfaces définitivement validées. Les endpoints et règles Polymarket doivent être vérifiés dans la documentation officielle au moment de l'implémentation.
+## Contrats et décisions
+- `contracts/` — contrats JSON `1.0.0` (proposition, non gelés).
+- `contracts/CONTRACT_FREEZE_PROPOSAL.md` — critères d'acceptation A1–A5 et proposition de gel.
+- `schemas/initial_db_schema.sql` — schéma SQLite `0.2`.
+- `DECISIONS.md` — décisions validées, approuvées en principe et questions ouvertes.
+
+## État
+Documents de cadrage v0.2 (revue A0 du 2026-10-26). Les contrats sont proposés, pas encore gelés. Aucun logiciel de trading n'est implémenté.
+
+## Démarrage recommandé
+1. Lire le cahier des charges PDF.
+2. Valider les documents Markdown et la proposition de gel.
+3. Vérifier les interfaces, les sources et les règles de frais dans la documentation officielle.
+4. Laisser A5 commiter les tests de contrat et de schéma.
+5. Développer les fixtures et le stockage avant la collecte réseau.
+
+## Mise en place du dépôt (mémo)
+```bash
+git remote add origin https://github.com/oelihasimanitra/polymarket-strategy-lab.git
+git branch -M main
+git push -u origin main
+```

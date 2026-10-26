@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0.0",
+  "event_id": "evt_fixture_trade_001",
+  "event_type": "trade",
+  "source": "fixture",
+  "source_event_id": "fixture-trade-001",
+  "source_timestamp": "2026-10-01T12:00:01.000000Z",
+  "received_timestamp": "2026-10-01T12:00:01.020000Z",
+  "market_id": "mkt_fixture_001",
+  "token_id": "tok_fixture_yes",
+  "accounting_unit": "pUSD",
+  "quality_flags": [
+    "fixture"
+  ],
+  "trade": {
+    "price_micros": 530000,
+    "size_micros": 40000000,
+    "taker_side": "BUY",
+    "trader_id": null,
+    "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}

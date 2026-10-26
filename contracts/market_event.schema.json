@@ -1,140 +1,1126 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polymarket-strategy-lab.invalid/contracts/market_event.schema.json",
   "title": "MarketEvent",
+  "description": "Événement de marché normalisé, contrat 1.0.0. Tous les montants, prix et tailles sont des entiers en micro-unités (1e-6). Les timestamps sont canoniques, en UTC, avec exactement six décimales. Le champ event_id doit être déterministe pour un enregistrement source donné afin de rendre le stockage idempotent. Aucune valeur externe Polymarket n'est supposée ici : les champs à confirmer sont listés dans ARCHITECTURE.md.",
   "type": "object",
+  "additionalProperties": false,
   "required": [
+    "schema_version",
     "event_id",
     "event_type",
     "source",
     "source_timestamp",
-    "received_timestamp"
+    "received_timestamp",
+    "quality_flags"
   ],
   "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
     "event_id": {
-      "type": "string"
+      "$ref": "#/$defs/event_id"
+    },
+    "event_type": {
+      "$ref": "#/$defs/event_type"
+    },
+    "source": {
+      "$ref": "#/$defs/source"
+    },
+    "source_event_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 256,
+      "description": "Identifiant natif de l'enregistrement chez la source (trade id, hash de message, etc.), conservé pour la traçabilité et la déduplication au sein d'une même source."
+    },
+    "source_timestamp": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "received_timestamp": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "market_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "token_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    },
+    "sequence_number": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 128,
+      "description": "Opaque. Ne jamais l'utiliser seul pour ordonner les événements ni pour comparer deux flux. Il sert uniquement à détecter les trous dans un même flux, si la source en fournit un."
+    },
+    "accounting_unit": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[A-Za-z][A-Za-z0-9._-]{1,31}$",
+      "description": "Unité comptable du notionnel. Ce n'est ni la devise de présentation ni nécessairement l'actif de règlement. Aucune conversion implicite n'est autorisée."
+    },
+    "source_schema_version": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 64,
+      "description": "Version du schéma amont si la source la publie. Ne jamais supposer que les champs Gamma, CLOB, Data API et flux temps réel sont interchangeables."
+    },
+    "quality_flags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/quality_flag"
+      },
+      "description": "Codes de qualité. Valeurs recommandées : late, clock_skew, duplicate, gap, stale, out_of_order, incomplete_book, unknown_activity_type, missing_metadata, cross_source_duplicate, fixture."
+    },
+    "raw_payload_ref": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 512,
+      "description": "Référence au payload brut conservé localement. Obligatoirement accompagnée de raw_payload_sha256."
+    },
+    "raw_payload_sha256": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "trade": {
+      "$ref": "#/$defs/trade"
+    },
+    "book_snapshot": {
+      "$ref": "#/$defs/book_snapshot"
+    },
+    "book_delta": {
+      "$ref": "#/$defs/book_delta"
+    },
+    "trader_activity": {
+      "$ref": "#/$defs/trader_activity"
+    },
+    "market_metadata": {
+      "$ref": "#/$defs/market_metadata"
+    },
+    "market_resolution": {
+      "$ref": "#/$defs/market_resolution"
+    },
+    "connection_status": {
+      "$ref": "#/$defs/connection_status"
+    }
+  },
+  "dependentRequired": {
+    "raw_payload_ref": [
+      "raw_payload_sha256"
+    ],
+    "raw_payload_sha256": [
+      "raw_payload_ref"
+    ]
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "event_type"
+        ],
+        "properties": {
+          "event_type": {
+            "const": "trade"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "trade",
+          "market_id",
+          "token_id",
+          "accounting_unit"
+        ],
+        "properties": {
+          "market_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "token_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "accounting_unit": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9._-]{1,31}$"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "trade"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "event_type"
+        ],
+        "properties": {
+          "event_type": {
+            "const": "book_snapshot"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "book_snapshot",
+          "market_id",
+          "token_id"
+        ],
+        "properties": {
+          "market_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "token_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "book_snapshot"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "event_type"
+        ],
+        "properties": {
+          "event_type": {
+            "const": "book_delta"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "book_delta",
+          "market_id",
+          "token_id"
+        ],
+        "properties": {
+          "market_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "token_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "book_delta"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "event_type"
+        ],
+        "properties": {
+          "event_type": {
+            "const": "trader_activity"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "trader_activity",
+          "market_id",
+          "accounting_unit"
+        ],
+        "properties": {
+          "market_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "accounting_unit": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9._-]{1,31}$"
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "trader_activity"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "event_type"
+        ],
+        "properties": {
+          "event_type": {
+            "const": "market_metadata"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "market_metadata",
+          "market_id"
+        ],
+        "properties": {
+          "market_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "market_metadata"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "event_type"
+        ],
+        "properties": {
+          "event_type": {
+            "const": "market_resolution"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "market_resolution",
+          "market_id"
+        ],
+        "properties": {
+          "market_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "else": {
+        "not": {
+          "required": [
+            "market_resolution"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "event_type"
+        ],
+        "properties": {
+          "event_type": {
+            "const": "connection_status"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "connection_status"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "connection_status"
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "event_id": {
+      "type": "string",
+      "pattern": "^evt_[A-Za-z0-9_.:-]{8,128}$",
+      "description": "Doit être déterministe pour un même enregistrement source. Recommandation A0 : SHA-256 tronqué sur (source, source_event_id ou contenu canonique, market_id, token_id, source_timestamp), préfixé evt_."
     },
     "event_type": {
       "enum": [
         "trade",
         "book_snapshot",
         "book_delta",
-        "market_metadata",
         "trader_activity",
+        "market_metadata",
+        "market_resolution",
         "connection_status"
       ]
     },
     "source": {
-      "type": "string"
-    },
-    "market_id": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "token_id": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "source_timestamp": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "received_timestamp": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "sequence_number": {
-      "type": [
-        "integer",
-        "string",
-        "null"
-      ]
-    },
-    "side": {
-      "type": [
-        "string",
-        "null"
-      ],
       "enum": [
-        "BUY",
-        "SELL",
-        null
-      ]
-    },
-    "price": {
-      "type": [
-        "number",
-        "null"
+        "gamma_api",
+        "clob_api",
+        "data_api",
+        "clob_ws",
+        "fixture"
       ],
+      "description": "Source d'origine. Responsabilités distinctes (vérification documentaire du propriétaire, non rejouée par A0) : gamma_api = métadonnées de marchés ; clob_api = carnet/prix/ordres ; data_api = activité publique des traders ; clob_ws = flux temps réel. Les champs ne sont pas interchangeables ; chaque adaptateur normalise son propre schéma. Toute nouvelle source exige une nouvelle version de contrat."
+    },
+    "quality_flag": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]{1,63}$"
+    },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$",
+      "description": "UTC canonique, exactement six décimales, suffixe Z. Les formats avec offset (+00:00) sont refusés : ils cassent le tri lexicographique en SQLite. received_timestamp peut être antérieur à source_timestamp en cas de dérive d'horloge ; cet écart doit être signalé via le flag clock_skew, pas corrigé silencieusement."
+    },
+    "price_micros": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 1000000,
+      "description": "Probabilité en micro-unités : 1 000 000 = 1.00. La borne [0, 1] est une hypothèse de marché à confirmer dans la documentation Polymarket avant collecte réseau."
+    },
+    "positive_micros": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "non_negative_micros": {
+      "type": "integer",
       "minimum": 0
     },
-    "size": {
-      "type": [
-        "number",
-        "null"
-      ],
-      "minimum": 0
-    },
-    "bids": {
-      "type": [
-        "array",
-        "null"
-      ],
-      "items": {
-        "$ref": "#/$defs/level"
-      }
-    },
-    "asks": {
-      "type": [
-        "array",
-        "null"
-      ],
-      "items": {
-        "$ref": "#/$defs/level"
-      }
-    },
-    "currency": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "raw_payload_ref": {
-      "type": [
-        "string",
-        "null"
-      ]
-    },
-    "quality_flags": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "default": []
-    }
-  },
-  "$defs": {
-    "level": {
+    "book_level": {
       "type": "object",
+      "additionalProperties": false,
       "required": [
-        "price",
-        "size"
+        "price_micros",
+        "size_micros"
       ],
       "properties": {
-        "price": {
-          "type": "number",
-          "minimum": 0
+        "price_micros": {
+          "$ref": "#/$defs/price_micros"
         },
-        "size": {
-          "type": "number",
-          "minimum": 0
+        "size_micros": {
+          "$ref": "#/$defs/positive_micros"
+        }
+      }
+    },
+    "book_change": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "book_side",
+        "action",
+        "price_micros",
+        "size_micros"
+      ],
+      "properties": {
+        "book_side": {
+          "enum": [
+            "BID",
+            "ASK"
+          ]
+        },
+        "action": {
+          "enum": [
+            "ADD",
+            "REMOVE",
+            "REPLACE"
+          ]
+        },
+        "price_micros": {
+          "$ref": "#/$defs/price_micros"
+        },
+        "size_micros": {
+          "$ref": "#/$defs/non_negative_micros"
         }
       },
-      "additionalProperties": false
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "const": "REMOVE"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "size_micros": {
+                "const": 0
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "action"
+            ],
+            "properties": {
+              "action": {
+                "enum": [
+                  "ADD",
+                  "REPLACE"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "size_micros": {
+                "$ref": "#/$defs/positive_micros"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "trade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "price_micros",
+        "size_micros",
+        "taker_side"
+      ],
+      "properties": {
+        "price_micros": {
+          "$ref": "#/$defs/price_micros"
+        },
+        "size_micros": {
+          "$ref": "#/$defs/positive_micros"
+        },
+        "taker_side": {
+          "enum": [
+            "BUY",
+            "SELL"
+          ],
+          "description": "Sens de l'agresseur tel que rapporté par la source. La sémantique exacte (taker vs maker, côté du token de résultat) doit être vérifiée dans la documentation officielle."
+        },
+        "trader_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "tx_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 1024
+        }
+      }
+    },
+    "book_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bids",
+        "asks"
+      ],
+      "properties": {
+        "bids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/book_level"
+          },
+          "description": "Ordre canonique : prix strictement décroissants, aucun prix dupliqué. Une liste vide est autorisée mais doit être signalée par incomplete_book."
+        },
+        "asks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/book_level"
+          },
+          "description": "Ordre canonique : prix strictement croissants, aucun prix dupliqué. Une liste vide est autorisée mais doit être signalée par incomplete_book."
+        },
+        "book_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "tick_size_micros": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        }
+      }
+    },
+    "book_delta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "changes"
+      ],
+      "properties": {
+        "changes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/book_change"
+          }
+        },
+        "book_hash_before": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "book_hash_after": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        }
+      }
+    },
+    "trader_activity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trader_id",
+        "activity_type"
+      ],
+      "properties": {
+        "trader_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "activity_type": {
+          "enum": [
+            "TRADE",
+            "SPLIT",
+            "MERGE",
+            "REDEEM",
+            "REWARD",
+            "CONVERSION",
+            "UNKNOWN"
+          ],
+          "description": "Valeurs à confirmer dans la documentation officielle. Toute valeur non reconnue doit être normalisée en UNKNOWN avec le flag unknown_activity_type et le payload brut conservé."
+        },
+        "side": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "BUY",
+            "SELL",
+            null
+          ]
+        },
+        "price_micros": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/price_micros"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "size_micros": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/positive_micros"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tx_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^0x[0-9a-fA-F]{64}$"
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 1024
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "activity_type"
+            ],
+            "properties": {
+              "activity_type": {
+                "const": "TRADE"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "side",
+              "price_micros",
+              "size_micros"
+            ],
+            "properties": {
+              "side": {
+                "enum": [
+                  "BUY",
+                  "SELL"
+                ]
+              },
+              "price_micros": {
+                "$ref": "#/$defs/price_micros"
+              },
+              "size_micros": {
+                "$ref": "#/$defs/positive_micros"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "market_outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "token_id",
+        "outcome_label",
+        "outcome_index"
+      ],
+      "properties": {
+        "token_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "outcome_label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "outcome_index": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "market_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outcomes",
+        "collateral_asset",
+        "collateral_decimals",
+        "settlement_asset",
+        "status",
+        "tick_size_micros",
+        "min_order_size_micros"
+      ],
+      "properties": {
+        "condition_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "question": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 2048
+        },
+        "slug": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 256
+        },
+        "category": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "end_time": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "active",
+            "closed",
+            "resolved",
+            "void",
+            "unknown"
+          ]
+        },
+        "accepting_orders": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "tick_size_micros": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Obligatoire mais nullable : l'absence doit être explicite. A2 refuse toute exécution si la valeur n'est pas connue."
+        },
+        "min_order_size_micros": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "neg_risk": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "collateral_asset": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9._-]{1,31}$",
+          "description": "Actif de collatéral effectivement utilisé par le marché. Selon la vérification documentaire du propriétaire (2026-10-26), pUSD est présenté comme collatéral ; ce point reste à confirmer par marché."
+        },
+        "collateral_decimals": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 18,
+          "description": "Décimales natives de l'actif de collatéral. Les montants du ledger restent en micro-unités d'échelle 1e-6 ; cette valeur sert à la conversion depuis la source."
+        },
+        "settlement_asset": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[A-Za-z][A-Za-z0-9._-]{1,31}$",
+          "description": "Actif de règlement du protocole pour ce marché. La documentation actuelle décrit un règlement en USDC natif ; ce point doit être vérifié par marché. Il peut différer de collateral_asset : aucune conversion 1:1 implicite."
+        },
+        "outcomes": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/market_outcome"
+          }
+        }
+      }
+    },
+    "settlement_conversion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from_asset",
+        "to_asset",
+        "rate_micros",
+        "source",
+        "recorded_at",
+        "verification_status"
+      ],
+      "properties": {
+        "from_asset": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9._-]{1,31}$"
+        },
+        "to_asset": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9._-]{1,31}$"
+        },
+        "rate_micros": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Unités de to_asset par unité de from_asset, en micro-unités (1 000 000 = 1:1). Aucune conversion 1:1 n'est supposée."
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "recorded_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "verification_status": {
+          "enum": [
+            "verified",
+            "provisional",
+            "unverified"
+          ]
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 2048
+        }
+      }
+    },
+    "market_resolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resolution_status",
+        "resolved_at",
+        "resolution_source",
+        "settlement_asset",
+        "payout_per_share_micros",
+        "conversion_rule"
+      ],
+      "properties": {
+        "resolution_status": {
+          "enum": [
+            "RESOLVED",
+            "VOID"
+          ]
+        },
+        "winning_token_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+        },
+        "resolved_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "resolution_source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "settlement_asset": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 32,
+          "pattern": "^[A-Za-z][A-Za-z0-9._-]{1,31}$",
+          "description": "Actif dans lequel le protocole règle. Peut différer de l'unité comptable de l'expérience ; dans ce cas, une conversion_rule est obligatoire."
+        },
+        "payout_per_share_micros": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Montant payé par part gagnante, en micro-unités de settlement_asset. 1 000 000 = 1.00. Ne pas supposer 1.00 sans règle de résolution vérifiée."
+        },
+        "conversion_rule": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/settlement_conversion"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Obligatoire si settlement_asset diffère de l'unité comptable ou du collateral_asset. A2 vérifie la cohérence ; le contrat ne peut pas comparer deux champs."
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 2048
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "resolution_status"
+            ],
+            "properties": {
+              "resolution_status": {
+                "const": "RESOLVED"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "winning_token_id",
+              "settlement_asset",
+              "payout_per_share_micros"
+            ],
+            "properties": {
+              "winning_token_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "settlement_asset": {
+                "type": "string",
+                "minLength": 1
+              },
+              "payout_per_share_micros": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 1000000
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "resolution_status"
+            ],
+            "properties": {
+              "resolution_status": {
+                "const": "VOID"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "winning_token_id": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "connection_status": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stream_id",
+        "status"
+      ],
+      "properties": {
+        "stream_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "status": {
+          "enum": [
+            "CONNECTED",
+            "DISCONNECTED",
+            "RECONNECTING",
+            "ERROR",
+            "CLOSED"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 1024
+        },
+        "gap_start_timestamp": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gap_end_timestamp": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/timestamp"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
     }
-  },
-  "additionalProperties": true
+  }
 }

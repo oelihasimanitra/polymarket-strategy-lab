@@ -1,0 +1,59 @@
+{
+  "contract_type": "execution_estimate",
+  "schema_version": "1.0.0",
+  "estimate_id": "est_fixture_001",
+  "intent_id": "intent_fixture_001",
+  "book_snapshot_event_id": "evt_fixture_book_001",
+  "arrival_timestamp": "2026-10-01T12:00:01.600000Z",
+  "status": "accepted",
+  "accounting_unit": "pUSD",
+  "executable_size_micros": 100000000,
+  "unfilled_size_micros": 0,
+  "vwap_micros": 536000,
+  "levels": [
+    {
+      "level_index": 0,
+      "price_micros": 530000,
+      "available_size_micros": 40000000,
+      "consumed_size_micros": 40000000,
+      "excluded_size_micros": 0
+    },
+    {
+      "level_index": 1,
+      "price_micros": 540000,
+      "available_size_micros": 80000000,
+      "consumed_size_micros": 60000000,
+      "excluded_size_micros": 0
+    }
+  ],
+  "assumptions": {
+    "contract_type": "execution_assumptions",
+    "schema_version": "1.0.0",
+    "latency_ms": 500,
+    "latency_jitter_ms": 100,
+    "latency_distribution": "uniform",
+    "liquidity_haircut_bps": 1000,
+    "max_book_age_ms": 1500,
+    "max_depth_levels": null,
+    "random_seed": 42,
+    "rng_implementation": "python3.15-random-mt19937",
+    "rounding_rule": "half_up_micros",
+    "notes": "Hypothèses fictives, scénario central."
+  },
+  "fee_calculation": {
+    "fee_schedule_id": "fee_fixture_001",
+    "fee_formula": "linear_min_price_1mp",
+    "rate_micros": 10000,
+    "fee_unit": "collateral",
+    "fee_amount_micros": 464000,
+    "rounding_rule": "half_up_micros",
+    "formula_inputs": {
+      "price_micros": 536000,
+      "size_micros": 100000000,
+      "notional_micros": 53600000,
+      "min_price_complement_micros": 464000
+    }
+  },
+  "rejection_reason": null,
+  "created_at": "2026-10-01T12:00:01.600000Z"
+}

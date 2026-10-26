@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0.0",
+  "event_id": "evt_fixture_book_001",
+  "event_type": "book_snapshot",
+  "source": "fixture",
+  "source_event_id": "fixture-book-001",
+  "source_timestamp": "2026-10-01T12:00:00.000000Z",
+  "received_timestamp": "2026-10-01T12:00:00.050000Z",
+  "market_id": "mkt_fixture_001",
+  "token_id": "tok_fixture_yes",
+  "sequence_number": null,
+  "quality_flags": [
+    "fixture"
+  ],
+  "book_snapshot": {
+    "bids": [
+      {
+        "price_micros": 510000,
+        "size_micros": 50000000
+      },
+      {
+        "price_micros": 500000,
+        "size_micros": 100000000
+      }
+    ],
+    "asks": [
+      {
+        "price_micros": 530000,
+        "size_micros": 40000000
+      },
+      {
+        "price_micros": 540000,
+        "size_micros": 80000000
+      }
+    ],
+    "book_hash": "fixture_book_001",
+    "tick_size_micros": 10000
+  }
+}

@@ -5,9 +5,25 @@ app:
   timezone: "UTC"
   log_level: "INFO"
 
+# Trois niveaux monétaires distincts :
+# - accounting_unit : unité de tous les montants du ledger ;
+# - presentation_currency : affichage uniquement, aucune conversion implicite ;
+# - settlement_asset : actif de règlement, porté par les métadonnées de marché
+#   et l'événement de résolution (pas par cette configuration globale).
+accounting:
+  unit: "pUSD"                 # exemple ; la valeur réelle vient de l'expérience
+  decimals: 6
+
+reporting:
+  presentation_currency: "pUSD"
+  allow_conversion: false      # true exige une règle sourcée, datée et versionnée
+  conversion_rule_ref: null
+
 storage:
   backend: "sqlite"
   sqlite_path: "./data/polymarket_lab.sqlite3"
+  journal_mode: "WAL"
+  busy_timeout_ms: 5000
   raw_payload_dir: "./data/raw"
   keep_raw_payloads: true
 
@@ -16,7 +32,35 @@ collection:
   public_data_only: true
   reconnect: true
   max_retries: 10
+  # Seuil d'alerte côté collecte. Le seuil utilisé par la simulation est figé
+  # par expérience dans execution_assumptions.max_book_age_ms.
   stale_book_threshold_ms: 1500
+
+  # Responsabilités distinctes. Les champs ne sont pas interchangeables :
+  # chaque adaptateur normalise son propre schéma et conserve la provenance.
+  sources:
+    gamma_api:
+      enabled: false
+      role: "market_metadata"
+    clob_api:
+      enabled: false
+      role: "orderbook_prices_orders"
+    data_api:
+      enabled: false
+      role: "public_trader_activity"
+    clob_ws:
+      enabled: false
+      role: "realtime_book_and_trades"
+  field_interchangeability: false
+
+  # Paper trading en direct : conserver les carnets, pas seulement les prix.
+  # L'historique des prix ne permet pas de reconstituer la profondeur.
+  paper_live_recording:
+    book_snapshots: true
+    book_deltas: true
+    trades: true
+    raw_payloads: true
+    price_history_is_not_book_history: true
 
 simulation:
   enabled: false
@@ -26,24 +70,38 @@ simulation:
     optimistic: 100
     central: 500
     stress: 1500
-  book_liquidity_haircut:
-    optimistic: 0.0
-    central: 0.1
-    stress: 0.3
+  book_liquidity_haircut_bps:
+    optimistic: 0
+    central: 1000
+    stress: 3000
+  max_book_age_ms: 1500       # valeur par défaut ; à figer par expérience
   allow_partial_fills: true
   allow_short_positions: false
-  require_verified_fee_schedule: true
   max_position_fraction_of_equity: 0.10
 
+fees:
+  require_verified_fee_schedule: true
+  require_market_specific_schedule: true
+  allow_category_rate_as_proof: false
+  allow_unverified_net_pnl: false
+
 capital_scenarios:
-  currency: "USD"
+  accounting_unit: "pUSD"     # montants dans l'unité comptable, pas en USD d'affichage
   values: [100, 250, 500, 1000, 2500, 5000, 10000]
+
+resolution:
+  record_as_event: true
+  require_settlement_asset: true
+  settlement_asset_source: "market_metadata"
+  allow_void: true
+  conversion_policy: "no_implicit_conversion"
 
 dashboard:
   enabled: false
   host: "127.0.0.1"
   port: 8501
   read_only: true
+  display_currency: "pUSD"    # présentation ; ne modifie jamais le ledger
 
 safety:
   real_orders_enabled: false

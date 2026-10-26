@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0.0",
+  "event_id": "evt_fixture_metadata_001",
+  "event_type": "market_metadata",
+  "source": "fixture",
+  "source_event_id": "fixture-metadata-001",
+  "source_timestamp": "2026-10-01T11:59:00.000000Z",
+  "received_timestamp": "2026-10-01T11:59:00.100000Z",
+  "market_id": "mkt_fixture_001",
+  "token_id": null,
+  "quality_flags": [
+    "fixture"
+  ],
+  "raw_payload_ref": "raw/fixture/2026-10-01/evt_fixture_metadata_001.json",
+  "raw_payload_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "market_metadata": {
+    "condition_id": "0x1111111111111111111111111111111111111111111111111111111111111111",
+    "question": "Marché fictif — question de test uniquement",
+    "slug": "marche-fictif-test",
+    "category": "crypto",
+    "end_time": "2026-10-02T00:00:00.000000Z",
+    "status": "active",
+    "accepting_orders": true,
+    "tick_size_micros": 10000,
+    "min_order_size_micros": 1000000,
+    "neg_risk": false,
+    "collateral_asset": "pUSD",
+    "collateral_decimals": 6,
+    "settlement_asset": "USDC",
+    "outcomes": [
+      {
+        "token_id": "tok_fixture_yes",
+        "outcome_label": "Yes",
+        "outcome_index": 0
+      },
+      {
+        "token_id": "tok_fixture_no",
+        "outcome_label": "No",
+        "outcome_index": 1
+      }
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0.0",
+  "event_id": "evt_fixture_delta_001",
+  "event_type": "book_delta",
+  "source": "fixture",
+  "source_event_id": "fixture-delta-001",
+  "source_timestamp": "2026-10-01T12:00:00.500000Z",
+  "received_timestamp": "2026-10-01T12:00:00.550000Z",
+  "market_id": "mkt_fixture_001",
+  "token_id": "tok_fixture_yes",
+  "sequence_number": "1",
+  "quality_flags": [
+    "fixture"
+  ],
+  "book_delta": {
+    "changes": [
+      {
+        "book_side": "ASK",
+        "action": "REPLACE",
+        "price_micros": 530000,
+        "size_micros": 30000000
+      }
+    ],
+    "book_hash_before": "fixture_book_001",
+    "book_hash_after": "fixture_book_002"
+  }
+}
