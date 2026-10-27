@@ -1,0 +1,11 @@
+{
+  "contract_type": "execution_result",
+  "schema_version": "1.2.0",
+  "order_id": "ord_fixture_missing_book",
+  "intent_id": "intent_fixture_missing_book",
+  "status": "rejected",
+  "rejection_reason": "missing_book",
+  "estimate": null,
+  "fills": [],
+  "created_at": "2026-10-01T12:00:01.600000Z"
+}

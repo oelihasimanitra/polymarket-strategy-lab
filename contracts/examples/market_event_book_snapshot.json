@@ -1,6 +1,6 @@
 {
-  "schema_version": "1.0.0",
-  "event_id": "evt_fixture_book_001",
+  "schema_version": "1.2.0",
+  "event_id": "evt_1814f543bc5114cae4e556da94a7085c",
   "event_type": "book_snapshot",
   "source": "fixture",
   "source_event_id": "fixture-book-001",
@@ -35,5 +35,7 @@
     ],
     "book_hash": "fixture_book_001",
     "tick_size_micros": 10000
-  }
+  },
+  "normalizer_version": "1.1.0",
+  "event_identity_version": "v2"
 }

@@ -1,6 +1,6 @@
 {
-  "schema_version": "1.0.0",
-  "event_id": "evt_fixture_resolution_001",
+  "schema_version": "1.2.0",
+  "event_id": "evt_fecda26b0ec3da6c9e5c213d5336baac",
   "event_type": "market_resolution",
   "source": "fixture",
   "source_event_id": "fixture-resolution-001",
@@ -27,5 +27,7 @@
       "notes": "FICTIF — taux 1:1 non vérifié, uniquement pour tester le contrat."
     },
     "notes": "Résolution fictive."
-  }
+  },
+  "normalizer_version": "1.1.0",
+  "event_identity_version": "v2"
 }

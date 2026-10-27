@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://polymarket-strategy-lab.invalid/contracts/execution.schema.json",
   "title": "ExecutionContracts",
-  "description": "Contrats d'exécution simulée, version 1.0.0. Le fichier racine accepte l'un des objets suivants, discriminés par contract_type : order_intent, execution_assumptions, execution_estimate, fill, execution_result. Tous les montants, prix et tailles sont des entiers en micro-unités (1e-6). Aucun ordre réel ne peut être représenté par ces contrats.",
+  "description": "Contrats d'exécution simulée, version 1.2.0. Le fichier racine accepte l'un des objets suivants, discriminés par contract_type : order_intent, execution_assumptions, execution_estimate, fill, execution_result. Tous les montants, prix et tailles sont des entiers en micro-unités (1e-6). En V1, les frais sont prélevés uniquement en collatéral ; per_share et outcome_token sont suspendus. Aucun ordre réel ne peut être représenté par ces contrats.",
   "oneOf": [
     {
       "$ref": "#/$defs/order_intent"
@@ -56,8 +56,10 @@
       "enum": [
         "stale_book",
         "missing_book",
+        "incomplete_book",
         "insufficient_liquidity",
         "missing_fee_schedule",
+        "ambiguous_fee_schedule",
         "risk_limit",
         "invalid_order",
         "other"
@@ -76,15 +78,12 @@
       "enum": [
         "none",
         "linear_min_price_1mp",
-        "notional",
-        "per_share",
-        "custom"
+        "notional"
       ]
     },
     "fee_unit": {
       "enum": [
-        "collateral",
-        "outcome_token"
+        "collateral"
       ]
     },
     "order_intent": {
@@ -110,7 +109,7 @@
           "const": "order_intent"
         },
         "schema_version": {
-          "const": "1.0.0"
+          "const": "1.2.0"
         },
         "intent_id": {
           "$ref": "#/$defs/reference_id"
@@ -140,7 +139,7 @@
         },
         "limit_price_micros": {
           "$ref": "#/$defs/price_micros",
-          "description": "Obligatoire, même pour un ordre dit « market » : la borne de prix protège contre un slippage non borné. Un ordre sans limite doit utiliser 0 ou 1000000 explicitement."
+          "description": "Obligatoire, même pour un ordre dit « market ». Pour BUY, prix maximal accepté ; pour SELL, prix minimal accepté. 0 et 1000000 sont des bornes explicites, pas des synonymes de « non borné »."
         },
         "decision_timestamp": {
           "$ref": "#/$defs/timestamp"
@@ -183,14 +182,15 @@
         "max_book_age_ms",
         "random_seed",
         "rng_implementation",
-        "rounding_rule"
+        "rounding_rule",
+        "rounding_increment_micros"
       ],
       "properties": {
         "contract_type": {
           "const": "execution_assumptions"
         },
         "schema_version": {
-          "const": "1.0.0"
+          "const": "1.2.0"
         },
         "latency_ms": {
           "type": "integer",
@@ -203,9 +203,9 @@
         "latency_distribution": {
           "enum": [
             "fixed",
-            "uniform",
-            "normal"
-          ]
+            "uniform"
+          ],
+          "description": "V1 uniquement. fixed = latency_ms. uniform = tirage entier uniforme sur [latency_ms, latency_ms + latency_jitter_ms]. normal est retiré jusqu'à définition d'un sigma et d'une troncature."
         },
         "liquidity_haircut_bps": {
           "type": "integer",
@@ -225,22 +225,44 @@
         },
         "random_seed": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9223372036854775807
         },
         "rng_implementation": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128,
-          "description": "Implémentation exacte du générateur, par exemple python3.15-random-mt19937. Deux implémentations différentes ne produisent pas les mêmes tirages."
+          "const": "polymarket-lab/rng/v2",
+          "description": "Générateur V1.2.0. Sous-seed SHA-256 dépendant de (master_seed, intent_id, purpose) ; aucun flux global dépendant de l'ordre d'exécution."
         },
         "rounding_rule": {
           "$ref": "#/$defs/rounding_rule"
+        },
+        "rounding_increment_micros": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Incrément d'arrondi des notionnels, du VWAP et du coût retiré, dans l'unité comptable. L'arrondi des frais utilise celui du barème."
         },
         "notes": {
           "type": "string",
           "maxLength": 2048
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "latency_distribution": {
+                "const": "fixed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "latency_jitter_ms": {
+                "const": 0
+              }
+            }
+          }
+        }
+      ]
     },
     "level_consumption": {
       "type": "object",
@@ -353,6 +375,7 @@
         "contract_type",
         "schema_version",
         "estimate_id",
+        "order_id",
         "intent_id",
         "book_snapshot_event_id",
         "arrival_timestamp",
@@ -368,10 +391,14 @@
           "const": "execution_estimate"
         },
         "schema_version": {
-          "const": "1.0.0"
+          "const": "1.2.0"
         },
         "estimate_id": {
           "$ref": "#/$defs/reference_id"
+        },
+        "order_id": {
+          "$ref": "#/$defs/reference_id",
+          "description": "Ordre auquel cette estimation appartient. Le SQL impose une estimation par ordre en V1."
         },
         "intent_id": {
           "$ref": "#/$defs/reference_id"
@@ -532,7 +559,7 @@
           "const": "fill"
         },
         "schema_version": {
-          "const": "1.0.0"
+          "const": "1.2.0"
         },
         "fill_id": {
           "$ref": "#/$defs/reference_id"
@@ -593,7 +620,7 @@
           "const": "execution_result"
         },
         "schema_version": {
-          "const": "1.0.0"
+          "const": "1.2.0"
         },
         "order_id": {
           "$ref": "#/$defs/reference_id"
@@ -610,7 +637,15 @@
           ]
         },
         "estimate": {
-          "$ref": "#/$defs/execution_estimate"
+          "oneOf": [
+            {
+              "$ref": "#/$defs/execution_estimate"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Null uniquement pour un rejet missing_book : aucun snapshot ne permet de produire une estimation, et aucun snapshot fictif n'est autorisé."
         },
         "fills": {
           "type": "array",
@@ -648,9 +683,15 @@
             }
           },
           "then": {
+            "required": [
+              "rejection_reason"
+            ],
             "properties": {
               "fills": {
                 "maxItems": 0
+              },
+              "rejection_reason": {
+                "$ref": "#/$defs/rejection_reason"
               }
             }
           }
@@ -673,6 +714,39 @@
             "properties": {
               "fills": {
                 "minItems": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "status",
+              "rejection_reason"
+            ],
+            "properties": {
+              "status": {
+                "const": "rejected"
+              },
+              "rejection_reason": {
+                "const": "missing_book"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "estimate": {
+                "type": "null"
+              }
+            }
+          },
+          "else": {
+            "required": [
+              "estimate"
+            ],
+            "properties": {
+              "estimate": {
+                "$ref": "#/$defs/execution_estimate"
               }
             }
           }

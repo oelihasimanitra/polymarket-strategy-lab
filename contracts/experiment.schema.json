@@ -2,9 +2,19 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://polymarket-strategy-lab.invalid/contracts/experiment.schema.json",
   "title": "ExperimentDefinition",
-  "description": "Enveloppe de reproductibilité d'une expérience, contrat 1.0.0. Elle fige la stratégie, la fenêtre, le capital, le manifeste de données, les hypothèses d'exécution, les limites de risque, le barème de frais, la version du code et le hash de configuration. Le bloc execution_assumptions doit rester identique à execution.schema.json#/$defs/execution_assumptions ; A5 doit tester cette égalité.",
+  "description": "Enveloppe de reproductibilité d'une expérience, contrat 1.2.0. Elle fige la stratégie, la fenêtre, le capital, le manifeste de données, les hypothèses d'exécution, les limites de risque, le barème de frais, la version du code et le hash de configuration. Le bloc execution_assumptions doit rester identique à execution.schema.json#/$defs/execution_assumptions ; A5 doit tester cette égalité. La fenêtre period est soumise à l'extension x-polymarket-chronological-order (A5-06).",
   "type": "object",
   "additionalProperties": false,
+  "$comment": "Le validateur consommateur DOIT implémenter x-polymarket-chronological-order ; un validateur JSON Schema standard ignore cette extension et ne contrôle donc pas period.end_time > period.start_time.",
+  "x-polymarket-chronological-order": {
+    "instance_path": [
+      "period"
+    ],
+    "start_field": "start_time",
+    "end_field": "end_time",
+    "strict": true,
+    "allow_null_end": true
+  },
   "required": [
     "schema_version",
     "experiment_id",
@@ -18,11 +28,12 @@
     "code_version",
     "config_hash",
     "status",
-    "created_at"
+    "created_at",
+    "config_hash_version"
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0.0"
+      "const": "1.2.0"
     },
     "experiment_id": {
       "$ref": "#/$defs/reference_id"
@@ -281,9 +292,9 @@
           "enum": [
             "verified",
             "provisional",
-            "unverified",
-            "not_required"
-          ]
+            "unverified"
+          ],
+          "description": "not_required est retiré en V1 : un fill exige toujours un barème, éventuellement none."
         }
       },
       "allOf": [
@@ -322,6 +333,9 @@
     "config_hash": {
       "type": "string",
       "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "config_hash_version": {
+      "const": "config/v2"
     },
     "status": {
       "enum": [
@@ -461,14 +475,15 @@
         "max_book_age_ms",
         "random_seed",
         "rng_implementation",
-        "rounding_rule"
+        "rounding_rule",
+        "rounding_increment_micros"
       ],
       "properties": {
         "contract_type": {
           "const": "execution_assumptions"
         },
         "schema_version": {
-          "const": "1.0.0"
+          "const": "1.2.0"
         },
         "latency_ms": {
           "type": "integer",
@@ -481,9 +496,9 @@
         "latency_distribution": {
           "enum": [
             "fixed",
-            "uniform",
-            "normal"
-          ]
+            "uniform"
+          ],
+          "description": "V1 uniquement. fixed = latency_ms. uniform = tirage entier uniforme sur [latency_ms, latency_ms + latency_jitter_ms]."
         },
         "liquidity_haircut_bps": {
           "type": "integer",
@@ -503,12 +518,12 @@
         },
         "random_seed": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 0,
+          "maximum": 9223372036854775807
         },
         "rng_implementation": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 128
+          "const": "polymarket-lab/rng/v2",
+          "description": "Générateur V1.2.0. Sous-seed SHA-256 dépendant de (master_seed, intent_id, purpose) ; aucun flux global dépendant de l'ordre d'exécution."
         },
         "rounding_rule": {
           "enum": [
@@ -519,11 +534,33 @@
             "exchange_specific"
           ]
         },
+        "rounding_increment_micros": {
+          "type": "integer",
+          "minimum": 1
+        },
         "notes": {
           "type": "string",
           "maxLength": 2048
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "latency_distribution": {
+                "const": "fixed"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "latency_jitter_ms": {
+                "const": 0
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

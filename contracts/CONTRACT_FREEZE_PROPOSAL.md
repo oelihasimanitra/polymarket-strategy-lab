@@ -1,14 +1,18 @@
 # Proposition de gel des contrats et critères d'acceptation
 
-**Date :** 2026-10-26  
-**Auteur :** A0 — architecte / intégrateur  
-**Statut :** PROPOSITION — gel non prononcé.  
-**Objets proposés au gel :**
-- contrats JSON `1.0.0` : `market_event`, `execution`, `fee_schedule`,
-  `experiment`, `strategy_hypothesis` ;
-- schéma SQL `schemas/initial_db_schema.sql` version `0.2` ;
-- conventions de `ARCHITECTURE.md` version `0.2` ;
-- décisions D-009 à D-024 approuvées en principe le 2026-10-26.
+**Date :** 2026-10-26, mise à jour 2026-10-27
+**Auteur :** A0 — architecte / intégrateur
+**Statut :** PROPOSITION — gel non prononcé. Références auditées : contrats
+`1.1.0`, SQL `0.4`. Candidats P0 préparés : contrats `1.2.0`, SQL `0.5`/`0.6`/`0.7`.
+**Objets proposés au gel (après validation des candidats) :**
+- contrats JSON `1.2.0` : `market_event`, `execution`, `experiment` et
+  `fee_schedule` ; `strategy_hypothesis` reste `1.0.0` ;
+- schéma SQL base `0.3` + `0004_consolidation.sql` (0.4) +
+  `0005_p0_foundations.sql` (0.5) + `0006_p0_ledger.sql` (0.6) +
+  `0007_contract_sql_alignment.sql` (0.7) ;
+- conventions de `ARCHITECTURE.md` version `0.5` (candidat) ;
+- décisions D-009 à D-024, D-027 à D-053 (D-028, D-031, D-033, D-037, D-039
+  sous réserve ; D-042 à D-053 au statut PRÉPARÉ, non approuvées).
 
 Aucun test réseau n'a été exécuté par A0. Les conclusions Polymarket intégrées
 proviennent de la vérification documentaire rapportée par le propriétaire le
@@ -45,9 +49,15 @@ amont, les paramètres de stratégie, les seuils de risque.
 
 - Toute modification d'interface passe par A0, avec une nouvelle version
   (`schema_version` et/ou migration SQL).
-- Un changement de type, d'unité ou de sémantique est une version majeure.
-- Un ajout de champ optionnel est une version mineure, avec test de
-  compatibilité.
+- **Phase pré-gel (D-040)** : une extension compatible reste une version
+  mineure. Une version mineure peut aussi contenir des changements
+  incompatibles documentés, testés et accompagnés d'une déclaration de
+  compatibilité. `1.1.0` n'est pas rétrocompatible avec `1.0.0` au sens de la
+  validation ; les documents `1.0.0` restent des archives lisibles.
+- **Après gel (SemVer strict)** : un changement de type, d'unité ou de
+  sémantique, un retrait d'énumération ou un ajout de champ obligatoire est une
+  version majeure. Un ajout de champ optionnel est une version mineure, avec
+  test de compatibilité.
 - Aucun agent ne modifie `contracts/` ou `schemas/` sans accord A0.
 - Toute migration SQL est accompagnée d'une note de migration et d'un test de
   rejeu.
@@ -118,7 +128,8 @@ preuve de performance ou comme un test réseau.
 - Frais via `FeeCalculator` avec un barème fictif explicitement `unverified`.
 - Grand livre en partie double : somme nulle, cash ≥ 0, quantité ≥ 0, pas de
   short, pas de cash issu du PnL latent.
-- Coût de revient, PnL réalisé, PnL latent, frais en collatéral et en parts.
+- Coût de revient, PnL réalisé, PnL latent, frais en collatéral. Les frais en
+  parts sont différés avec Q-011 et ne font pas partie des critères V1.
 - Résolution gagnante, perdante et VOID ; conversion pUSD → USDC par
   `conversion_rule` explicite.
 - Idempotence : double `apply_fill`, double settlement, reversal.
@@ -205,6 +216,12 @@ exécutable avec `pytest`.
 - Tests A5 §6 verts.
 - Propriétaire de `core/` accepté par A1/A2 (D-017).
 - Aucune modification ouverte de contrat.
+- **C-01/C-02/C-03** vérifiés indépendamment par A5 : monotonie des chaînes de
+  remplacement, horloge de stockage sans antidatage, seal de manifeste
+  obligatoire. Ces règles sont candidates dans `0005` et les tests P0 ; elles
+  ne sont pas gelées avant le rapport A5.
+- Aucune migration `0005`/`0006`/`0007` exécutée sur la base de travail sans
+  décision séparée du propriétaire.
 
 **Différables, avec étiquette explicite :**
 - Q-001 : source canonique token/outcome.
@@ -254,4 +271,14 @@ tests et A1 pour les fixtures explicitement autorisées.
 | 2026-10-26 | Schéma SQL et contraintes | 26 tables, 7 vues, 13 triggers, 18 index ; 24 assertions PASS |
 | 2026-10-26 | Cohérence `event_type` | PASS sur contrat, filtre d'expérience et SQL |
 | 2026-10-26 | Vérification documentaire Polymarket | Rapportée par le propriétaire, non rejouée par A0 |
+| 2026-10-27 | Suite A5 après corrections SQL — **mesure historique antérieure à B-04/P0** | 472 tests collectés, 470 PASS, 2 xfail documentés (A5-06), 0 échec inattendu |
+| 2026-10-27 | Suite après corrections A5-REAUDIT — **mesure historique avant A5-06** | 600 tests collectés, 598 PASS, 2 xfail A5-06, 0 échec inattendu |
+| 2026-10-27 | Suite après correction A5-06 (D-050) — **historique avant 0007** | 619 tests collectés, 619 PASS, 0 xfail, 0 échec inattendu |
+| 2026-10-27 | Suite après alignement contrats/SQL (D-051) — **historique avant writer** | 639 tests collectés, 639 PASS, 0 xfail, 0 échec inattendu |
+| 2026-10-27 | Suite après intégration du writer (D-052) — **historique avant durcissement** | 653 tests collectés, 653 PASS, 0 xfail, 0 échec inattendu |
+| 2026-10-27 | Suite après durcissement du writer (D-053) — historique | 672 tests collectés, 672 PASS, 0 xfail, 0 échec inattendu |
+| 2026-10-27 | Suite après fermeture des contournements (D-054) | 717 tests collectés, 717 PASS, 0 xfail, 0 échec inattendu |
+| 2026-10-27 | Suite après corrections A5-C2 (D-055) | 744 tests collectés, 744 PASS, 0 xfail, 0 échec inattendu |
+| 2026-10-27 | Schéma SQL `0.3` | 26 tables, 7 vues, 39 triggers, 18 index ; `user_version = 3` |
+| 2026-10-27 | Intégrité SQLite sur base seedée + réouverture | `integrity_check = ok`, `foreign_key_check` vide, WAL actif |
 | — | Test réseau Polymarket | **Non exécuté** |

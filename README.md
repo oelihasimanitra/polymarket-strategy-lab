@@ -20,13 +20,23 @@ Laboratoire local de recherche sur la reproductibilité de stratégies observée
 - Dashboard local.
 
 ## Contrats et décisions
-- `contracts/` — contrats JSON `1.0.0` (proposition, non gelés).
+- `contracts/` — contrats JSON `1.2.0` candidats (non gelés) ; les contrats
+  `1.1.0` restent les références auditées.
 - `contracts/CONTRACT_FREEZE_PROPOSAL.md` — critères d'acceptation A1–A5 et proposition de gel.
-- `schemas/initial_db_schema.sql` — schéma SQLite `0.2`.
+- `WRITER_INTEGRATION.md` — parcours commun de validation et d'écriture pour
+  les writers A1/A2.
+- `schemas/initial_db_schema.sql` + `schemas/migrations/0004_consolidation.sql`
+  — base SQLite `0.3`, migration auditée `0.4` et migrations candidates
+  `0005`/`0006`/`0007` (non exécutées). Une base neuve applique la base puis
+  les migrations avec `schemas/migrations/run_migration.py`, qui vérifie les
+  versions et restaure les FK après migration.
 - `DECISIONS.md` — décisions validées, approuvées en principe et questions ouvertes.
 
 ## État
-Documents de cadrage v0.2 (revue A0 du 2026-10-26). Les contrats sont proposés, pas encore gelés. Aucun logiciel de trading n'est implémenté.
+Documents de cadrage v0.5 candidat (P0 du 2026-10-27). Les contrats `1.2.0`
+et les migrations `0005`/`0006`/`0007` sont préparés, non approuvés et non
+exécutés ; les références auditées restent `1.1.0`/`0.4`. Aucun logiciel de
+trading n'est implémenté.
 
 ## Démarrage recommandé
 1. Lire le cahier des charges PDF.

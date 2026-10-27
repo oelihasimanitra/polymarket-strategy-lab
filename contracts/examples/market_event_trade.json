@@ -1,6 +1,6 @@
 {
-  "schema_version": "1.0.0",
-  "event_id": "evt_fixture_trade_001",
+  "schema_version": "1.2.0",
+  "event_id": "evt_6fee1617544a2b750081e0fef8cb925c",
   "event_type": "trade",
   "source": "fixture",
   "source_event_id": "fixture-trade-001",
@@ -17,6 +17,9 @@
     "size_micros": 40000000,
     "taker_side": "BUY",
     "trader_id": null,
-    "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000000"
-  }
+    "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "trader_visibility": "unknown"
+  },
+  "normalizer_version": "1.1.0",
+  "event_identity_version": "v2"
 }

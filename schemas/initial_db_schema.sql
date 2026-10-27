@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Polymarket Strategy Research Lab — schéma SQLite initial
--- Version : 0.2 (revue A0 du 2026-10-26)
--- Statut  : PROPOSITION — non gelée tant que D-009 à D-020 ne sont pas validées.
+-- Version : 0.3 (correction A0 après audit A5 du 2026-10-27)
+-- Statut  : PROPOSITION — non gelée ; voir DECISIONS.md D-025 et le rapport A0.
 --
 -- Conventions non négociables
 -- ---------------------------
@@ -25,6 +25,10 @@
 --   son propre schéma et conserve la provenance + le payload brut.
 -- * Foreign keys : PRAGMA foreign_keys = ON est PAR CONNEXION, pas persistant.
 --   L'application doit l'activer à chaque connexion.
+-- * Triggers récursifs : PRAGMA recursive_triggers = ON est PAR CONNEXION.
+--   Il est requis pour que les triggers DELETE se déclenchent aussi lors d'un
+--   INSERT OR REPLACE. L'application doit l'activer ; les triggers UPDATE/DELETE
+--   protègent les UPDATE/DELETE directs, pas DROP TABLE / ALTER TABLE.
 -- * Mode WAL recommandé pour la V1 (collecteur + simulateur + dashboard) :
 --   PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;
 -- * Événements normalisés : append-only. Les corrections passent par une
@@ -36,6 +40,7 @@
 -- ============================================================================
 
 PRAGMA foreign_keys = ON;
+PRAGMA recursive_triggers = ON;
 
 -- ----------------------------------------------------------------------------
 -- 0. Versionnement du schéma
@@ -107,7 +112,11 @@ CREATE TABLE market_tokens (
     outcome_label TEXT NOT NULL,
     outcome_index INTEGER NOT NULL CHECK (outcome_index >= 0),
     UNIQUE (market_id, outcome_index),
-    UNIQUE (market_id, outcome_label)
+    UNIQUE (market_id, outcome_label),
+    -- Cible des FK composites (market_id, token_id) : un token appartient à un
+    -- seul marché. Le UNIQUE sur token_id seul (PK) ne prouve pas cette
+    -- appartenance ; cette contrainte la rend vérifiable par SQLite.
+    UNIQUE (market_id, token_id)
 ) STRICT;
 
 -- ----------------------------------------------------------------------------
@@ -136,6 +145,10 @@ CREATE TABLE data_manifests (
 
 CREATE TABLE fee_schedules (
     fee_schedule_id          TEXT PRIMARY KEY,
+    -- Version du document fee_schedule persisté. Les barèmes existants sont en
+    -- 1.0.0 ; la colonne rend une future évolution traçable sans migration
+    -- silencieuse.
+    schema_version           TEXT NOT NULL DEFAULT '1.0.0',
     verification_status      TEXT NOT NULL
                              CHECK (verification_status IN ('verified', 'provisional', 'unverified')),
     source_url               TEXT NOT NULL,
@@ -163,6 +176,8 @@ CREATE TABLE fee_schedules (
     supersedes_fee_schedule_id TEXT REFERENCES fee_schedules(fee_schedule_id),
     created_at               TEXT NOT NULL,
     CHECK (effective_to IS NULL OR effective_to > effective_from),
+    CHECK (length(accounting_unit) BETWEEN 2 AND 32
+           AND accounting_unit GLOB '[A-Za-z][A-Za-z0-9._-]*'),
     CHECK (fee_formula <> 'none' OR (maker_rate_micros = 0 AND taker_rate_micros = 0)),
     CHECK (fee_formula <> 'custom' OR custom_formula_ref IS NOT NULL),
     CHECK (verification_status <> 'verified' OR source_url LIKE 'https://%'),
@@ -191,6 +206,8 @@ CREATE TABLE strategies (
 
 CREATE TABLE experiments (
     experiment_id              TEXT PRIMARY KEY,
+    -- Version du document experiment persisté (contrat experiment 1.0.0).
+    schema_version             TEXT NOT NULL DEFAULT '1.0.0',
     strategy_id                TEXT NOT NULL,
     strategy_version           TEXT NOT NULL,
     period_type                TEXT NOT NULL
@@ -221,6 +238,20 @@ CREATE TABLE experiments (
     CHECK (end_time IS NULL OR end_time > start_time),
     CHECK (period_type = 'paper_live' OR data_manifest_id IS NOT NULL),
     CHECK (fee_status NOT IN ('verified', 'provisional') OR default_fee_schedule_id IS NOT NULL),
+    -- Une devise de présentation différente de l'unité comptable exige une
+    -- règle de conversion explicite ; aucune conversion implicite.
+    CHECK (presentation_currency = accounting_unit
+           OR presentation_conversion_json IS NOT NULL),
+    -- random_seed est dupliqué entre colonne et JSON d'hypothèses d'exécution.
+    -- Le doublon n'est acceptable que s'il est toujours identique ; la clé
+    -- JSON doit exister et être un entier.
+    CHECK (json_valid(execution_assumptions_json) = 0
+           OR (json_type(execution_assumptions_json, '$.random_seed') = 'integer'
+               AND json_extract(execution_assumptions_json, '$.random_seed') = random_seed)),
+    CHECK (length(accounting_unit) BETWEEN 2 AND 32
+           AND accounting_unit GLOB '[A-Za-z][A-Za-z0-9._-]*'),
+    CHECK (length(presentation_currency) BETWEEN 2 AND 32
+           AND presentation_currency GLOB '[A-Za-z][A-Za-z0-9._-]*'),
     CHECK (start_time GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9][0-9][0-9][0-9]Z'),
     CHECK (end_time IS NULL OR end_time GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9][0-9][0-9][0-9]Z'),
     CHECK (created_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9][0-9][0-9][0-9]Z'),
@@ -253,14 +284,28 @@ CREATE TABLE market_events (
     sequence_number       TEXT,
     quality_flags_json    TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(quality_flags_json)),
     raw_payload_ref       TEXT,
-    raw_payload_sha256    TEXT CHECK (raw_payload_sha256 IS NULL OR length(raw_payload_sha256) = 64),
-    CHECK (raw_payload_ref IS NULL OR raw_payload_sha256 IS NOT NULL),
-    CHECK (event_type NOT IN ('trade', 'book_snapshot', 'book_delta', 'market_metadata', 'market_resolution')
+    -- Le couple référence/empreinte est indissociable dans les deux sens :
+    -- une empreinte sans payload conservé n'est pas auditable, et un payload
+    -- sans empreinte ne permet pas de vérifier l'intégrité.
+    raw_payload_sha256    TEXT CHECK (raw_payload_sha256 IS NULL
+                                      OR (length(raw_payload_sha256) = 64
+                                          AND raw_payload_sha256 NOT GLOB '*[^0-9a-f]*')),
+    CHECK ((raw_payload_ref IS NULL) = (raw_payload_sha256 IS NULL)),
+    CHECK (event_type NOT IN ('trade', 'trader_activity', 'book_snapshot', 'book_delta',
+                              'market_metadata', 'market_resolution')
            OR market_id IS NOT NULL),
     CHECK (event_type NOT IN ('trade', 'book_snapshot', 'book_delta') OR token_id IS NOT NULL),
+    -- (market_id, token_id) est une clé étrangère composite : un événement ne
+    -- peut pas référencer le token d'un autre marché. Une FK simple sur
+    -- token_id ne suffisait pas.
+    FOREIGN KEY (market_id, token_id) REFERENCES market_tokens(market_id, token_id),
     -- L'unité comptable est obligatoire pour les événements qui portent un
     -- notionnel. Ce n'est ni la devise de présentation ni l'actif de règlement.
     CHECK (event_type NOT IN ('trade', 'trader_activity') OR accounting_unit IS NOT NULL),
+    -- Même format que les contrats JSON : lettre initiale, 2 à 32 caractères.
+    CHECK (accounting_unit IS NULL
+           OR (length(accounting_unit) BETWEEN 2 AND 32
+               AND accounting_unit GLOB '[A-Za-z][A-Za-z0-9._-]*')),
     CHECK (ingested_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9][0-9][0-9][0-9]Z')
 ) STRICT;
 
@@ -283,7 +328,13 @@ CREATE TABLE trade_events (
     size_micros   INTEGER NOT NULL CHECK (size_micros > 0),
     taker_side    TEXT NOT NULL CHECK (taker_side IN ('BUY', 'SELL')),
     trader_id     TEXT REFERENCES traders(trader_id),
-    tx_hash       TEXT CHECK (tx_hash IS NULL OR (length(tx_hash) = 66 AND substr(tx_hash, 1, 2) = '0x'))
+    -- 0x + 64 chiffres hexadécimaux, comme le contrat JSON. Le préfixe seul ne
+    -- prouvait rien : '0x' + 64 'z' passait.
+    tx_hash       TEXT CHECK (tx_hash IS NULL
+                              OR (length(tx_hash) = 66
+                                  AND substr(tx_hash, 1, 2) = '0x'
+                                  AND substr(tx_hash, 3) NOT GLOB '*[^0-9a-fA-F]*')),
+    notes         TEXT CHECK (notes IS NULL OR length(notes) <= 1024)
 ) STRICT;
 
 CREATE INDEX idx_trade_events_trader ON trade_events(trader_id);
@@ -297,7 +348,11 @@ CREATE TABLE trader_activity_events (
     side          TEXT CHECK (side IS NULL OR side IN ('BUY', 'SELL')),
     price_micros  INTEGER CHECK (price_micros IS NULL OR price_micros BETWEEN 0 AND 1000000),
     size_micros   INTEGER CHECK (size_micros IS NULL OR size_micros > 0),
-    tx_hash       TEXT CHECK (tx_hash IS NULL OR (length(tx_hash) = 66 AND substr(tx_hash, 1, 2) = '0x')),
+    tx_hash       TEXT CHECK (tx_hash IS NULL
+                              OR (length(tx_hash) = 66
+                                  AND substr(tx_hash, 1, 2) = '0x'
+                                  AND substr(tx_hash, 3) NOT GLOB '*[^0-9a-fA-F]*')),
+    notes         TEXT CHECK (notes IS NULL OR length(notes) <= 1024),
     CHECK (activity_type <> 'TRADE'
            OR (side IS NOT NULL AND price_micros IS NOT NULL AND size_micros IS NOT NULL))
 ) STRICT;
@@ -321,10 +376,31 @@ CREATE TABLE book_delta_changes (
     action        TEXT NOT NULL CHECK (action IN ('ADD', 'REMOVE', 'REPLACE')),
     price_micros  INTEGER NOT NULL CHECK (price_micros BETWEEN 0 AND 1000000),
     size_micros   INTEGER NOT NULL CHECK (size_micros >= 0),
+    -- Les hashes décrivent le carnet entier avant/après le delta, pas une ligne
+    -- de changement. Ils sont donc répétés à l'identique sur toutes les lignes
+    -- d'un même event_id ; un trigger vérifie cette égalité. Alternative plus
+    -- normalisée : table d'en-tête 1:1, différée pour ne pas multiplier les
+    -- tables sans besoin applicatif démontré.
+    book_hash_before TEXT CHECK (book_hash_before IS NULL
+                                 OR length(book_hash_before) BETWEEN 1 AND 128),
+    book_hash_after  TEXT CHECK (book_hash_after IS NULL
+                                 OR length(book_hash_after) BETWEEN 1 AND 128),
     PRIMARY KEY (event_id, change_index),
     CHECK (action <> 'REMOVE' OR size_micros = 0),
     CHECK (action = 'REMOVE' OR size_micros > 0)
 ) STRICT;
+
+CREATE TRIGGER trg_book_delta_hash_consistency
+BEFORE INSERT ON book_delta_changes
+WHEN EXISTS (
+    SELECT 1 FROM book_delta_changes
+    WHERE event_id = NEW.event_id
+      AND (book_hash_before IS NOT NEW.book_hash_before
+           OR book_hash_after IS NOT NEW.book_hash_after)
+)
+BEGIN
+    SELECT RAISE(ABORT, 'book_hash_before/after doivent être identiques pour un même delta');
+END;
 
 CREATE TABLE market_metadata_events (
     event_id                TEXT PRIMARY KEY REFERENCES market_events(event_id) ON DELETE RESTRICT,
@@ -432,6 +508,168 @@ BEGIN
     SELECT RAISE(ABORT, 'connection_events exige event_type=connection_status');
 END;
 
+-- Le JSON outcomes d'un événement de métadonnées doit être auto-cohérent :
+-- token_id et outcome_index uniques, éléments objet avec identifiants. Le
+-- contrat JSON le décrit ; le SQL le vérifie aussi car un événement de
+-- métadonnées incohérent ne doit pas être stocké, même si market_tokens est
+-- corrigé en aval.
+CREATE TRIGGER trg_market_metadata_outcomes_unique
+BEFORE INSERT ON market_metadata_events
+WHEN json_valid(NEW.outcomes_json)
+ AND json_type(NEW.outcomes_json) = 'array'
+ AND (
+     (SELECT COUNT(*) FROM json_each(NEW.outcomes_json))
+         <> (SELECT COUNT(DISTINCT json_extract(value, '$.token_id'))
+             FROM json_each(NEW.outcomes_json))
+     OR (SELECT COUNT(*) FROM json_each(NEW.outcomes_json))
+         <> (SELECT COUNT(DISTINCT json_extract(value, '$.outcome_index'))
+             FROM json_each(NEW.outcomes_json))
+     OR EXISTS (
+         SELECT 1 FROM json_each(NEW.outcomes_json)
+         WHERE json_type(value) IS NOT 'object'
+            OR json_type(value, '$.token_id') IS NOT 'text'
+            OR length(json_extract(value, '$.token_id')) = 0
+            OR json_type(value, '$.outcome_index') IS NOT 'integer'
+            OR json_extract(value, '$.outcome_index') < 0
+     )
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'outcomes_json doit contenir des token_id et outcome_index uniques');
+END;
+
+-- Le token gagnant doit appartenir au marché de l'événement de résolution.
+CREATE TRIGGER trg_resolution_winning_token_market
+BEFORE INSERT ON market_resolution_events
+WHEN NEW.winning_token_id IS NOT NULL
+ AND (SELECT mt.market_id FROM market_tokens mt WHERE mt.token_id = NEW.winning_token_id)
+     IS NOT (SELECT e.market_id FROM market_events e WHERE e.event_id = NEW.event_id)
+BEGIN
+    SELECT RAISE(ABORT, 'winning_token_id doit appartenir au marché de la résolution');
+END;
+
+-- Une résolution réglée dans un actif différent du collatéral du marché exige
+-- une règle de conversion explicite. Le contenu de la règle est validé par le
+-- contrat JSON et par A2 ; le SQL impose seulement sa présence.
+CREATE TRIGGER trg_resolution_conversion_required
+BEFORE INSERT ON market_resolution_events
+WHEN NEW.resolution_status = 'RESOLVED'
+ AND NEW.conversion_rule_json IS NULL
+ AND EXISTS (
+     SELECT 1
+     FROM markets m
+     JOIN market_events e ON e.market_id = m.market_id
+     WHERE e.event_id = NEW.event_id
+       AND m.collateral_asset IS NOT NULL
+       AND m.collateral_asset IS NOT NEW.settlement_asset
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'conversion_rule_json exigée si settlement_asset diffère du collatéral');
+END;
+
+-- ----------------------------------------------------------------------------
+-- 3bis. Immuabilité des événements normalisés (append-only)
+-- ----------------------------------------------------------------------------
+-- Toute correction passe par un nouvel event_id. Ces triggers couvrent les
+-- UPDATE/DELETE directs. INSERT OR REPLACE déclenche les triggers DELETE
+-- seulement si PRAGMA recursive_triggers=ON (activé en tête de schéma) ;
+-- INSERT OR IGNORE n'écrit rien et reste idempotent. DROP TABLE/ALTER TABLE
+-- restent des opérations d'administration hors du contrôle d'un trigger.
+CREATE TRIGGER trg_market_events_no_update
+BEFORE UPDATE ON market_events
+BEGIN
+    SELECT RAISE(ABORT, 'market_events est append-only');
+END;
+
+CREATE TRIGGER trg_market_events_no_delete
+BEFORE DELETE ON market_events
+BEGIN
+    SELECT RAISE(ABORT, 'market_events est append-only');
+END;
+
+CREATE TRIGGER trg_trade_events_no_update
+BEFORE UPDATE ON trade_events
+BEGIN
+    SELECT RAISE(ABORT, 'trade_events est append-only');
+END;
+
+CREATE TRIGGER trg_trade_events_no_delete
+BEFORE DELETE ON trade_events
+BEGIN
+    SELECT RAISE(ABORT, 'trade_events est append-only');
+END;
+
+CREATE TRIGGER trg_trader_activity_events_no_update
+BEFORE UPDATE ON trader_activity_events
+BEGIN
+    SELECT RAISE(ABORT, 'trader_activity_events est append-only');
+END;
+
+CREATE TRIGGER trg_trader_activity_events_no_delete
+BEFORE DELETE ON trader_activity_events
+BEGIN
+    SELECT RAISE(ABORT, 'trader_activity_events est append-only');
+END;
+
+CREATE TRIGGER trg_book_snapshots_no_update
+BEFORE UPDATE ON book_snapshots
+BEGIN
+    SELECT RAISE(ABORT, 'book_snapshots est append-only');
+END;
+
+CREATE TRIGGER trg_book_snapshots_no_delete
+BEFORE DELETE ON book_snapshots
+BEGIN
+    SELECT RAISE(ABORT, 'book_snapshots est append-only');
+END;
+
+CREATE TRIGGER trg_book_delta_changes_no_update
+BEFORE UPDATE ON book_delta_changes
+BEGIN
+    SELECT RAISE(ABORT, 'book_delta_changes est append-only');
+END;
+
+CREATE TRIGGER trg_book_delta_changes_no_delete
+BEFORE DELETE ON book_delta_changes
+BEGIN
+    SELECT RAISE(ABORT, 'book_delta_changes est append-only');
+END;
+
+CREATE TRIGGER trg_market_metadata_events_no_update
+BEFORE UPDATE ON market_metadata_events
+BEGIN
+    SELECT RAISE(ABORT, 'market_metadata_events est append-only');
+END;
+
+CREATE TRIGGER trg_market_metadata_events_no_delete
+BEFORE DELETE ON market_metadata_events
+BEGIN
+    SELECT RAISE(ABORT, 'market_metadata_events est append-only');
+END;
+
+CREATE TRIGGER trg_market_resolution_events_no_update
+BEFORE UPDATE ON market_resolution_events
+BEGIN
+    SELECT RAISE(ABORT, 'market_resolution_events est append-only');
+END;
+
+CREATE TRIGGER trg_market_resolution_events_no_delete
+BEFORE DELETE ON market_resolution_events
+BEGIN
+    SELECT RAISE(ABORT, 'market_resolution_events est append-only');
+END;
+
+CREATE TRIGGER trg_connection_events_no_update
+BEFORE UPDATE ON connection_events
+BEGIN
+    SELECT RAISE(ABORT, 'connection_events est append-only');
+END;
+
+CREATE TRIGGER trg_connection_events_no_delete
+BEFORE DELETE ON connection_events
+BEGIN
+    SELECT RAISE(ABORT, 'connection_events est append-only');
+END;
+
 -- Incidents de qualité : trous, reconnexions, lateness, dérive d'horloge,
 -- doublons inter-sources, hash de carnet incohérent, etc. Le dashboard et les
 -- rapports doivent les afficher ; une période incomplète ne doit pas produire
@@ -468,6 +706,12 @@ CREATE INDEX idx_incidents_market_time ON data_quality_incidents(market_id, star
 -- ----------------------------------------------------------------------------
 CREATE TABLE simulated_orders (
     order_id                 TEXT PRIMARY KEY,
+    -- Cardinalité V1 : une intention produit au plus un ordre ; l'ordre porte
+    -- l'intention (y compris un ordre rejeté, qui conserve la décision). Le
+    -- couple (order_id, intent_id) sert de cible à la FK composite des
+    -- estimations, qui ne peuvent donc pas citer l'intention d'un autre ordre.
+    intent_id                TEXT NOT NULL UNIQUE,
+    schema_version           TEXT NOT NULL DEFAULT '1.0.0',
     idempotency_key          TEXT NOT NULL UNIQUE,
     experiment_id            TEXT NOT NULL REFERENCES experiments(experiment_id),
     market_id                TEXT NOT NULL REFERENCES markets(market_id),
@@ -486,8 +730,16 @@ CREATE TABLE simulated_orders (
     simulated_arrival_timestamp TEXT,
     book_snapshot_event_id   TEXT REFERENCES market_events(event_id),
     assumptions_json         TEXT NOT NULL CHECK (json_valid(assumptions_json)),
+    rationale                TEXT CHECK (rationale IS NULL OR length(rationale) <= 2048),
+    tags_json                TEXT NOT NULL DEFAULT '[]'
+                             CHECK (json_valid(tags_json) AND json_type(tags_json) = 'array'),
     accounting_unit          TEXT NOT NULL,
     created_at               TEXT NOT NULL,
+    UNIQUE (order_id, intent_id),
+    -- Le token de l'ordre doit appartenir au marché de l'ordre.
+    FOREIGN KEY (market_id, token_id) REFERENCES market_tokens(market_id, token_id),
+    CHECK (length(accounting_unit) BETWEEN 2 AND 32
+           AND accounting_unit GLOB '[A-Za-z][A-Za-z0-9._-]*'),
     CHECK (status <> 'rejected' OR rejection_reason IS NOT NULL),
     CHECK (simulated_arrival_timestamp IS NULL OR simulated_arrival_timestamp >= decision_timestamp),
     CHECK (status IN ('proposed', 'rejected') OR book_snapshot_event_id IS NOT NULL),
@@ -503,6 +755,8 @@ CREATE INDEX idx_orders_market_token ON simulated_orders(experiment_id, market_i
 CREATE TABLE execution_estimates (
     estimate_id              TEXT PRIMARY KEY,
     order_id                 TEXT NOT NULL UNIQUE REFERENCES simulated_orders(order_id),
+    intent_id                TEXT NOT NULL,
+    schema_version           TEXT NOT NULL DEFAULT '1.0.0',
     book_snapshot_event_id   TEXT NOT NULL REFERENCES market_events(event_id),
     arrival_timestamp        TEXT NOT NULL,
     status                   TEXT NOT NULL CHECK (status IN ('accepted', 'partial', 'rejected')),
@@ -519,6 +773,11 @@ CREATE TABLE execution_estimates (
                                          ('stale_book', 'missing_book', 'insufficient_liquidity',
                                           'missing_fee_schedule', 'risk_limit', 'invalid_order', 'other')),
     created_at               TEXT NOT NULL,
+    -- L'estimation doit citer l'intention de son ordre, pas une intention
+    -- quelconque. La FK composite le garantit.
+    FOREIGN KEY (order_id, intent_id) REFERENCES simulated_orders(order_id, intent_id),
+    CHECK (length(accounting_unit) BETWEEN 2 AND 32
+           AND accounting_unit GLOB '[A-Za-z][A-Za-z0-9._-]*'),
     CHECK (status <> 'rejected' OR rejection_reason IS NOT NULL),
     CHECK (status <> 'rejected' OR (executable_size_micros = 0 AND vwap_micros IS NULL)),
     CHECK (status = 'rejected' OR (vwap_micros IS NOT NULL AND fee_calculation_json IS NOT NULL)),
@@ -528,6 +787,7 @@ CREATE TABLE execution_estimates (
 
 CREATE TABLE simulated_fills (
     fill_id                TEXT PRIMARY KEY,
+    schema_version         TEXT NOT NULL DEFAULT '1.0.0',
     order_id               TEXT NOT NULL REFERENCES simulated_orders(order_id),
     fill_index             INTEGER NOT NULL CHECK (fill_index >= 0),
     level_index            INTEGER NOT NULL CHECK (level_index >= 0),
@@ -548,6 +808,8 @@ CREATE TABLE simulated_fills (
     fill_timestamp         TEXT NOT NULL,
     created_at             TEXT NOT NULL,
     UNIQUE (order_id, fill_index),
+    CHECK (length(accounting_unit) BETWEEN 2 AND 32
+           AND accounting_unit GLOB '[A-Za-z][A-Za-z0-9._-]*'),
     CHECK (fill_timestamp GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9][0-9][0-9][0-9]Z'),
     CHECK (created_at GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9].[0-9][0-9][0-9][0-9][0-9][0-9]Z')
 ) STRICT;
@@ -564,6 +826,100 @@ CREATE TRIGGER trg_simulated_fills_no_delete
 BEFORE DELETE ON simulated_fills
 BEGIN
     SELECT RAISE(ABORT, 'simulated_fills est append-only');
+END;
+
+-- ----------------------------------------------------------------------------
+-- 4bis. Références de carnet et cohérence ordre -> fill
+-- ----------------------------------------------------------------------------
+-- book_snapshot_event_id doit désigner un book_snapshot du même marché et du
+-- même token. Une FK vers market_events seule acceptait un trade ou un snapshot
+-- d'un autre marché.
+CREATE TRIGGER trg_orders_book_snapshot_insert
+BEFORE INSERT ON simulated_orders
+WHEN NEW.book_snapshot_event_id IS NOT NULL
+ AND NOT EXISTS (
+     SELECT 1
+     FROM book_snapshots bs
+     JOIN market_events e ON e.event_id = bs.event_id
+     WHERE bs.event_id = NEW.book_snapshot_event_id
+       AND e.market_id = NEW.market_id
+       AND e.token_id = NEW.token_id
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'book_snapshot_event_id doit être un snapshot du marché et du token de l''ordre');
+END;
+
+CREATE TRIGGER trg_orders_book_snapshot_update
+BEFORE UPDATE OF book_snapshot_event_id ON simulated_orders
+WHEN NEW.book_snapshot_event_id IS NOT NULL
+ AND NOT EXISTS (
+     SELECT 1
+     FROM book_snapshots bs
+     JOIN market_events e ON e.event_id = bs.event_id
+     WHERE bs.event_id = NEW.book_snapshot_event_id
+       AND e.market_id = NEW.market_id
+       AND e.token_id = NEW.token_id
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'book_snapshot_event_id doit être un snapshot du marché et du token de l''ordre');
+END;
+
+CREATE TRIGGER trg_estimates_book_snapshot_insert
+BEFORE INSERT ON execution_estimates
+WHEN EXISTS (SELECT 1 FROM simulated_orders WHERE order_id = NEW.order_id)
+ AND NOT EXISTS (
+    SELECT 1
+    FROM book_snapshots bs
+    JOIN market_events e ON e.event_id = bs.event_id
+    JOIN simulated_orders o ON o.order_id = NEW.order_id
+    WHERE bs.event_id = NEW.book_snapshot_event_id
+      AND e.market_id = o.market_id
+      AND e.token_id = o.token_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'book_snapshot_event_id doit être un snapshot du marché et du token de l''ordre estimé');
+END;
+
+CREATE TRIGGER trg_estimates_book_snapshot_update
+BEFORE UPDATE OF book_snapshot_event_id ON execution_estimates
+WHEN EXISTS (SELECT 1 FROM simulated_orders WHERE order_id = NEW.order_id)
+ AND NOT EXISTS (
+    SELECT 1
+    FROM book_snapshots bs
+    JOIN market_events e ON e.event_id = bs.event_id
+    JOIN simulated_orders o ON o.order_id = NEW.order_id
+    WHERE bs.event_id = NEW.book_snapshot_event_id
+      AND e.market_id = o.market_id
+      AND e.token_id = o.token_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'book_snapshot_event_id doit être un snapshot du marché et du token de l''ordre estimé');
+END;
+
+CREATE TRIGGER trg_fills_book_snapshot_insert
+BEFORE INSERT ON simulated_fills
+WHEN EXISTS (SELECT 1 FROM simulated_orders WHERE order_id = NEW.order_id)
+ AND NOT EXISTS (
+    SELECT 1
+    FROM book_snapshots bs
+    JOIN market_events e ON e.event_id = bs.event_id
+    JOIN simulated_orders o ON o.order_id = NEW.order_id
+    WHERE bs.event_id = NEW.book_snapshot_event_id
+      AND e.market_id = o.market_id
+      AND e.token_id = o.token_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'book_snapshot_event_id doit être un snapshot du marché et du token de l''ordre exécuté');
+END;
+
+-- Un fill ne peut exister que pour un ordre accepté, partiellement rempli ou
+-- rempli. proposed/rejected/expired n'ont pas d'exécution.
+CREATE TRIGGER trg_fills_order_status_insert
+BEFORE INSERT ON simulated_fills
+WHEN (SELECT status FROM simulated_orders WHERE order_id = NEW.order_id)
+     NOT IN ('accepted', 'partially_filled', 'filled')
+BEGIN
+    SELECT RAISE(ABORT, 'un fill exige un ordre accepté, partiellement rempli ou rempli');
 END;
 
 -- ----------------------------------------------------------------------------
@@ -793,4 +1149,7 @@ JOIN ledger_postings p ON p.transaction_id = t.transaction_id AND p.account = 'P
 GROUP BY t.experiment_id, p.token_id
 HAVING SUM(p.quantity_micros) < 0;
 
-PRAGMA user_version = 1;
+-- Version du schéma de stockage (pas la version des contrats JSON, portée par
+-- les colonnes schema_version). schema_migrations est alimenté par le runner de
+-- migrations incrémentales ; le script de base n'y insère pas de ligne.
+PRAGMA user_version = 3;

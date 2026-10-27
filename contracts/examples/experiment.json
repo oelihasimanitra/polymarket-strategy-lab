@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.2.0",
   "experiment_id": "exp_fixture_001",
   "strategy": {
     "strategy_id": "strat_fixture_001",
@@ -41,7 +41,7 @@
   },
   "execution_assumptions": {
     "contract_type": "execution_assumptions",
-    "schema_version": "1.0.0",
+    "schema_version": "1.2.0",
     "latency_ms": 500,
     "latency_jitter_ms": 100,
     "latency_distribution": "uniform",
@@ -49,9 +49,10 @@
     "max_book_age_ms": 1500,
     "max_depth_levels": null,
     "random_seed": 42,
-    "rng_implementation": "python3.15-random-mt19937",
+    "rng_implementation": "polymarket-lab/rng/v2",
     "rounding_rule": "half_up_micros",
-    "notes": "Hypothèses fictives, scénario central."
+    "notes": "Hypothèses fictives, scénario central.",
+    "rounding_increment_micros": 1
   },
   "risk_limits": {
     "max_position_fraction_bps": 1000,
@@ -64,8 +65,9 @@
     "status": "unverified"
   },
   "code_version": "git:fixture-0000000",
-  "config_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "config_hash": "sha256:7c2a9ae7b9845bb01c9c9eca548b0e56ec3155559b6cbda43ae1f00b2bf61fd9",
   "status": "planned",
   "created_at": "2026-10-01T11:00:00.000000Z",
-  "completed_at": null
+  "completed_at": null,
+  "config_hash_version": "config/v2"
 }

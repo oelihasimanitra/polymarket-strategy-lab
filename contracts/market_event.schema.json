@@ -2,21 +2,32 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://polymarket-strategy-lab.invalid/contracts/market_event.schema.json",
   "title": "MarketEvent",
-  "description": "Événement de marché normalisé, contrat 1.0.0. Tous les montants, prix et tailles sont des entiers en micro-unités (1e-6). Les timestamps sont canoniques, en UTC, avec exactement six décimales. Le champ event_id doit être déterministe pour un enregistrement source donné afin de rendre le stockage idempotent. Aucune valeur externe Polymarket n'est supposée ici : les champs à confirmer sont listés dans ARCHITECTURE.md.",
+  "description": "Événement de marché normalisé, contrat 1.2.0. Tous les montants, prix et tailles sont des entiers en micro-unités (1e-6). Les timestamps sont canoniques, en UTC, avec exactement six décimales. Le champ event_id doit être déterministe pour un enregistrement source donné afin de rendre le stockage idempotent. normalizer_version identifie le code de normalisation, distinct de schema_version (contrat) et source_schema_version (amont). Aucune valeur externe Polymarket n'est supposée ici : les champs à confirmer sont listés dans ARCHITECTURE.md.",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
+    "normalizer_version",
     "event_id",
     "event_type",
     "source",
     "source_timestamp",
     "received_timestamp",
-    "quality_flags"
+    "quality_flags",
+    "event_identity_version"
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0.0"
+      "const": "1.2.0"
+    },
+    "event_identity_version": {
+      "const": "v2",
+      "description": "Version de l'algorithme d'identité. v2 est requis pour les documents 1.2.0 ; les lignes legacy v1 restent des archives."
+    },
+    "normalizer_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$",
+      "description": "Version du normaliseur qui a produit cet événement (semver). Ne pas confondre avec schema_version (version du contrat) ni source_schema_version (version amont)."
     },
     "event_id": {
       "$ref": "#/$defs/event_id"
@@ -364,7 +375,15 @@
       "then": {
         "required": [
           "connection_status"
-        ]
+        ],
+        "properties": {
+          "market_id": {
+            "type": "null"
+          },
+          "token_id": {
+            "type": "null"
+          }
+        }
       },
       "else": {
         "not": {
@@ -379,7 +398,7 @@
     "event_id": {
       "type": "string",
       "pattern": "^evt_[A-Za-z0-9_.:-]{8,128}$",
-      "description": "Doit être déterministe pour un même enregistrement source. Recommandation A0 : SHA-256 tronqué sur (source, source_event_id ou contenu canonique, market_id, token_id, source_timestamp), préfixé evt_."
+      "description": "Doit être déterministe pour un même enregistrement source. Formule 1.2.0 (event-id/v2) : evt_ + 32 premiers hex de SHA-256 du canonical JSON de [\"polymarket-lab/event-id/v2\", source, source_event_id ou raw_payload_sha256, event_type, market_id, token_id, source_timestamp, normalizer_version]."
     },
     "event_type": {
       "enum": [
@@ -521,9 +540,17 @@
       "required": [
         "price_micros",
         "size_micros",
-        "taker_side"
+        "taker_side",
+        "trader_visibility"
       ],
       "properties": {
+        "trader_visibility": {
+          "enum": [
+            "identified",
+            "unknown"
+          ],
+          "description": "Un trade est un print public de marché. identified signifie que trader_id est connu et non nul ; unknown signifie que la source ne fournit pas l'identité, sans sentinel ni inférence."
+        },
         "price_micros": {
           "$ref": "#/$defs/price_micros"
         },
@@ -559,7 +586,51 @@
           ],
           "maxLength": 1024
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "trader_visibility"
+            ],
+            "properties": {
+              "trader_visibility": {
+                "const": "identified"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "trader_id"
+            ],
+            "properties": {
+              "trader_id": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "trader_visibility"
+            ],
+            "properties": {
+              "trader_visibility": {
+                "const": "unknown"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "trader_id": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
     },
     "book_snapshot": {
       "type": "object",
@@ -588,7 +659,25 @@
             "string",
             "null"
           ],
-          "maxLength": 128
+          "maxLength": 128,
+          "description": "Hash fourni par la source, opaque. Il n'est comparé que si book_hash_algorithm est connu et implémenté."
+        },
+        "book_hash_algorithm": {
+          "enum": [
+            "sha256",
+            "source_specific",
+            "unknown",
+            null
+          ],
+          "description": "Algorithme du hash source. unknown ou null interdit de conclure à une cohérence."
+        },
+        "internal_book_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "SHA-256 interne des niveaux normalisés, calculé par A1. Sert à vérifier notre reconstruction, pas à affirmer que le hash source est valide."
         },
         "tick_size_micros": {
           "type": [
@@ -626,6 +715,28 @@
             "null"
           ],
           "maxLength": 128
+        },
+        "book_hash_algorithm": {
+          "enum": [
+            "sha256",
+            "source_specific",
+            "unknown",
+            null
+          ]
+        },
+        "internal_book_hash_before": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "internal_book_hash_after": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-f0-9]{64}$"
         }
       }
     },
@@ -1007,6 +1118,14 @@
           ],
           "description": "Obligatoire si settlement_asset diffère de l'unité comptable ou du collateral_asset. A2 vérifie la cohérence ; le contrat ne peut pas comparer deux champs."
         },
+        "void_rule_ref": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 512,
+          "description": "Référence à la règle officielle de résolution VOID. Obligatoire si un payout est renseigné. Sans règle sourcée, aucun règlement VOID n'est autorisé."
+        },
         "notes": {
           "type": [
             "string",
@@ -1068,6 +1187,37 @@
               }
             }
           }
+        },
+        {
+          "if": {
+            "required": [
+              "resolution_status"
+            ],
+            "properties": {
+              "resolution_status": {
+                "const": "VOID"
+              },
+              "payout_per_share_micros": {
+                "type": "integer"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "settlement_asset",
+              "void_rule_ref"
+            ],
+            "properties": {
+              "settlement_asset": {
+                "type": "string",
+                "minLength": 1
+              },
+              "void_rule_ref": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
         }
       ]
     },
@@ -1122,5 +1272,27 @@
         }
       }
     }
-  }
+  },
+  "anyOf": [
+    {
+      "required": [
+        "source_event_id"
+      ],
+      "properties": {
+        "source_event_id": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "required": [
+        "raw_payload_sha256"
+      ],
+      "properties": {
+        "raw_payload_sha256": {
+          "type": "string"
+        }
+      }
+    }
+  ]
 }

@@ -2,9 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://polymarket-strategy-lab.invalid/contracts/fee_schedule.schema.json",
   "title": "FeeSchedule",
-  "description": "Barème de frais daté, sourcé et versionné, contrat 1.0.0. Aucune valeur de frais Polymarket n'est affirmée dans ce fichier : le contrat impose seulement la structure et le statut de vérification. Un fill ne peut être comptabilisé qu'avec un barème référencé. Les taux sont en micro-unités : 1 000 000 = 100 %.",
+  "description": "Barème de frais daté, sourcé et versionné, contrat 1.2.0. Aucune valeur de frais Polymarket n'est affirmée dans ce fichier : le contrat impose seulement la structure et le statut de vérification. Un fill ne peut être comptabilisé qu'avec un barème référencé. Les taux sont en micro-unités : 1 000 000 = 100 %. En V1, seules les formules none, linear_min_price_1mp et notional sont autorisées ; per_share et custom sont suspendus, et les frais sont prélevés uniquement en collatéral. La période effective est soumise à l'extension x-polymarket-chronological-order (A5-06).",
   "type": "object",
   "additionalProperties": false,
+  "$comment": "Le validateur consommateur DOIT implémenter x-polymarket-chronological-order ; un validateur JSON Schema standard ignore cette extension et ne contrôle donc pas effective_to > effective_from.",
+  "x-polymarket-chronological-order": {
+    "instance_path": [],
+    "start_field": "effective_from",
+    "end_field": "effective_to",
+    "strict": true,
+    "allow_null_end": true
+  },
   "required": [
     "schema_version",
     "fee_schedule_id",
@@ -27,7 +35,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0.0"
+      "const": "1.2.0"
     },
     "fee_schedule_id": {
       "type": "string",
@@ -108,25 +116,23 @@
       "enum": [
         "none",
         "linear_min_price_1mp",
-        "notional",
-        "per_share",
-        "custom"
+        "notional"
       ],
-      "description": "linear_min_price_1mp signifie taux × min(prix, 1 − prix) × quantité. La formule réellement applicable doit être confirmée dans la documentation officielle."
+      "description": "Formules V1. linear_min_price_1mp = taux × min(prix, 1 − prix) × quantité. notional = taux × prix × quantité. Leurs unités sont définies dans ARCHITECTURE.md. per_share et custom sont suspendus."
     },
-    "custom_formula_ref": {
+    "formula_definition_ref": {
       "type": [
         "string",
         "null"
       ],
-      "maxLength": 512
+      "maxLength": 512,
+      "description": "Référence à la définition officielle ou interne de la formule, datée. Recommandée pour linear_min_price_1mp et notional ; toute formule non documentée est refusée par A2."
     },
     "fee_charge_unit": {
       "enum": [
-        "collateral",
-        "outcome_token"
+        "collateral"
       ],
-      "description": "Unité dans laquelle le frais est prélevé. Cette distinction change le grand livre : un frais en parts réduit la position et non le cash."
+      "description": "V1 : frais prélevés uniquement en collatéral, dans l'unité comptable. outcome_token est suspendu avec Q-011."
     },
     "rounding_rule": {
       "enum": [
@@ -175,29 +181,6 @@
           },
           "taker_rate_micros": {
             "const": 0
-          }
-        }
-      }
-    },
-    {
-      "if": {
-        "required": [
-          "fee_formula"
-        ],
-        "properties": {
-          "fee_formula": {
-            "const": "custom"
-          }
-        }
-      },
-      "then": {
-        "required": [
-          "custom_formula_ref"
-        ],
-        "properties": {
-          "custom_formula_ref": {
-            "type": "string",
-            "minLength": 1
           }
         }
       }

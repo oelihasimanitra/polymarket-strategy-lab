@@ -1,6 +1,6 @@
 {
-  "schema_version": "1.0.0",
-  "event_id": "evt_fixture_delta_001",
+  "schema_version": "1.2.0",
+  "event_id": "evt_19d5dbc78f73dfcae1f03bb3955a9ef8",
   "event_type": "book_delta",
   "source": "fixture",
   "source_event_id": "fixture-delta-001",
@@ -23,5 +23,7 @@
     ],
     "book_hash_before": "fixture_book_001",
     "book_hash_after": "fixture_book_002"
-  }
+  },
+  "normalizer_version": "1.1.0",
+  "event_identity_version": "v2"
 }

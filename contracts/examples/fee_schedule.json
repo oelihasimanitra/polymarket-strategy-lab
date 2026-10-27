@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.2.0",
   "fee_schedule_id": "fee_fixture_001",
   "verification_status": "unverified",
   "source_url": "https://example.invalid/pending-polymarket-fees",
@@ -14,7 +14,6 @@
   "maker_rate_micros": 0,
   "taker_rate_micros": 10000,
   "fee_formula": "linear_min_price_1mp",
-  "custom_formula_ref": null,
   "fee_charge_unit": "collateral",
   "rounding_rule": "half_up_micros",
   "rounding_increment_micros": 1,

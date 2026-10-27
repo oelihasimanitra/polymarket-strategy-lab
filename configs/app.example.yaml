@@ -22,10 +22,18 @@ reporting:
 storage:
   backend: "sqlite"
   sqlite_path: "./data/polymarket_lab.sqlite3"
-  journal_mode: "WAL"
+  journal_mode: "WAL"        # obligatoire pour toute écriture sur fichier
   busy_timeout_ms: 5000
+  # NORMAL avec WAL ; FULL uniquement si la durabilité prime sur la latence.
+  synchronous: "NORMAL"
+  # Garanties imposées par storage/connection.py, jamais désactivées.
+  require_foreign_keys: true
+  require_recursive_triggers: true
   raw_payload_dir: "./data/raw"
   keep_raw_payloads: true
+  # Base de test séparée : aucune fixture dans la base de travail.
+  fixtures_database: ":memory:"
+  require_source_class: true
 
 collection:
   enabled: false
@@ -75,6 +83,8 @@ simulation:
     central: 1000
     stress: 3000
   max_book_age_ms: 1500       # valeur par défaut ; à figer par expérience
+  rounding_increment_micros: 1
+  latency_distribution: "uniform"   # V1 : fixed ou uniform uniquement
   allow_partial_fills: true
   allow_short_positions: false
   max_position_fraction_of_equity: 0.10
@@ -84,6 +94,10 @@ fees:
   require_market_specific_schedule: true
   allow_category_rate_as_proof: false
   allow_unverified_net_pnl: false
+  allowed_formulas: ["none", "linear_min_price_1mp", "notional"]
+  fee_charge_unit: "collateral"      # outcome_token suspendu en V1
+  per_share_enabled: false           # suspendu en V1
+  custom_enabled: false              # suspendu en V1
 
 capital_scenarios:
   accounting_unit: "pUSD"     # montants dans l'unité comptable, pas en USD d'affichage

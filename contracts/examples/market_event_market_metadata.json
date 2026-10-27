@@ -1,6 +1,6 @@
 {
-  "schema_version": "1.0.0",
-  "event_id": "evt_fixture_metadata_001",
+  "schema_version": "1.2.0",
+  "event_id": "evt_3fdc93573ccde5ccb7f60c0e5ecb9678",
   "event_type": "market_metadata",
   "source": "fixture",
   "source_event_id": "fixture-metadata-001",
@@ -11,7 +11,7 @@
   "quality_flags": [
     "fixture"
   ],
-  "raw_payload_ref": "raw/fixture/2026-10-01/evt_fixture_metadata_001.json",
+  "raw_payload_ref": "raw/fixture/2026-10-01/evt_3fdc93573ccde5ccb7f60c0e5ecb9678.json",
   "raw_payload_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "market_metadata": {
     "condition_id": "0x1111111111111111111111111111111111111111111111111111111111111111",
@@ -39,5 +39,7 @@
         "outcome_index": 1
       }
     ]
-  }
+  },
+  "normalizer_version": "1.1.0",
+  "event_identity_version": "v2"
 }

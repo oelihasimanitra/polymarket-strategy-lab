@@ -1,15 +1,16 @@
 {
   "contract_type": "execution_result",
-  "schema_version": "1.0.0",
+  "schema_version": "1.2.0",
   "order_id": "ord_fixture_001",
   "intent_id": "intent_fixture_001",
   "status": "filled",
   "estimate": {
     "contract_type": "execution_estimate",
-    "schema_version": "1.0.0",
+    "schema_version": "1.2.0",
     "estimate_id": "est_fixture_001",
+    "order_id": "ord_fixture_001",
     "intent_id": "intent_fixture_001",
-    "book_snapshot_event_id": "evt_fixture_book_001",
+    "book_snapshot_event_id": "evt_1814f543bc5114cae4e556da94a7085c",
     "arrival_timestamp": "2026-10-01T12:00:01.600000Z",
     "status": "accepted",
     "accounting_unit": "pUSD",
@@ -34,7 +35,7 @@
     ],
     "assumptions": {
       "contract_type": "execution_assumptions",
-      "schema_version": "1.0.0",
+      "schema_version": "1.2.0",
       "latency_ms": 500,
       "latency_jitter_ms": 100,
       "latency_distribution": "uniform",
@@ -42,9 +43,10 @@
       "max_book_age_ms": 1500,
       "max_depth_levels": null,
       "random_seed": 42,
-      "rng_implementation": "python3.15-random-mt19937",
+      "rng_implementation": "polymarket-lab/rng/v2",
       "rounding_rule": "half_up_micros",
-      "notes": "Hypothèses fictives, scénario central."
+      "notes": "Hypothèses fictives, scénario central.",
+      "rounding_increment_micros": 1
     },
     "fee_calculation": {
       "fee_schedule_id": "fee_fixture_001",
@@ -66,7 +68,7 @@
   "fills": [
     {
       "contract_type": "fill",
-      "schema_version": "1.0.0",
+      "schema_version": "1.2.0",
       "fill_id": "fill_fixture_001",
       "order_id": "ord_fixture_001",
       "fill_index": 0,
@@ -89,12 +91,12 @@
           "min_price_complement_micros": 470000
         }
       },
-      "book_snapshot_event_id": "evt_fixture_book_001",
+      "book_snapshot_event_id": "evt_1814f543bc5114cae4e556da94a7085c",
       "fill_timestamp": "2026-10-01T12:00:01.600000Z"
     },
     {
       "contract_type": "fill",
-      "schema_version": "1.0.0",
+      "schema_version": "1.2.0",
       "fill_id": "fill_fixture_002",
       "order_id": "ord_fixture_001",
       "fill_index": 1,
@@ -117,7 +119,7 @@
           "min_price_complement_micros": 460000
         }
       },
-      "book_snapshot_event_id": "evt_fixture_book_001",
+      "book_snapshot_event_id": "evt_1814f543bc5114cae4e556da94a7085c",
       "fill_timestamp": "2026-10-01T12:00:01.600000Z"
     }
   ],

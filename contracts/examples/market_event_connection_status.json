@@ -1,6 +1,6 @@
 {
-  "schema_version": "1.0.0",
-  "event_id": "evt_fixture_connection_001",
+  "schema_version": "1.2.0",
+  "event_id": "evt_d8531b2676ec3272afba60b1354f2532",
   "event_type": "connection_status",
   "source": "fixture",
   "source_event_id": "fixture-connection-001",
@@ -15,5 +15,7 @@
     "reason": "Test de coupure fictif.",
     "gap_start_timestamp": "2026-10-01T11:58:00.000000Z",
     "gap_end_timestamp": "2026-10-01T11:58:05.000000Z"
-  }
+  },
+  "normalizer_version": "1.1.0",
+  "event_identity_version": "v2"
 }

@@ -1,0 +1,12 @@
+# format: sha256sum-v1
+# scope: schemas/migrations/*.sql
+# covered: 0004_consolidation.sql 0005_p0_foundations.sql 0006_p0_ledger.sql 0007_contract_sql_alignment.sql
+# Baseline d'intégrité des migrations SQLite.
+# Ce fichier ne remplace pas Git : il prouve l'identité des fichiers présents
+# par rapport à cette baseline, pas l'authenticité de l'historique.
+# Toute modification d'une migration exige une mise à jour explicite de cette
+# baseline et une revue A0. Le manifeste lui-même n'est pas une migration.
+76f34d5043338a33d4981ad6ab8346f4755d04536d26dd84017f666f50024c3b  0004_consolidation.sql
+1a1e68f9e69ccb7784eba18b0b02f95c653cdd1c939620c085ad2cb7706e80f8  0005_p0_foundations.sql
+ba0bd8d3ef77c4615d620fde8c3cb48f59264a0d9e75416c64fba2fb84fe5868  0006_p0_ledger.sql
+ee46a1064827d7fd30ddfd1de4ca4319a6505d82b0b0933751230094cdc4b98d  0007_contract_sql_alignment.sql

@@ -1,6 +1,6 @@
 # Journal des décisions
 
-Mise à jour : 2026-10-26 (revue A0 — TASK-001).
+Mise à jour : 2026-10-27 (consolidation A0, clôture B-04 et préparation P0).
 
 Statuts :
 - **VALIDÉ** : décision du propriétaire, applicable.
@@ -9,6 +9,9 @@ Statuts :
 - **PROPOSÉ** : proposition A0, non applicable avant validation.
 - **À CONFIRMER** : question ouverte, aucune valeur par défaut n'est supposée.
 - **À FAIRE** : vérification documentaire ou action de mise en place.
+- **PRÉPARÉ** : spécification/fichiers candidats écrits, non approuvés et non
+  exécutés. Un statut PRÉPARÉ ne vaut ni validation ni autorisation d'exécuter
+  une migration sur la base de travail.
 
 Les décisions APPROUVÉES EN PRINCIPE ne sont pas encore un gel : elles
 autorisent la préparation, pas la modification unilatérale des interfaces.
@@ -281,12 +284,383 @@ ledger ; A4 affiche séparément le PnL pré-résolution et le résultat de
 règlement.
 
 ### D-025 — Proposition de gel des contrats — EN ATTENTE DE VALIDATION
-Les contrats `1.0.0` et le schéma SQL `0.2` sont proposés au gel après
+Les contrats `1.1.0` et le schéma SQL `0.4` sont proposés au gel après
 validation des critères d'acceptation de
 `contracts/CONTRACT_FREEZE_PROPOSAL.md`.
 
+**Mise à jour 2026-10-27** : le schéma passe de `0.2` à `0.3` après les
+corrections de l'audit A5 (voir D-026). Le gel n'est pas prononcé.
+
 **Conséquence** : aucun agent ne modifie une interface gelée sans nouvelle
 version, test et note de migration.
+
+### D-026 — Corrections SQL après audit A5 — PROPOSÉ, À APPROUVER
+Le schéma `0.3` corrige les anomalies SQL bloquantes de l'audit A5 :
+
+- append-only effectif sur `market_events` et ses sept tables de détail ;
+- intégrité composite `(market_id, token_id)` sur les événements et les ordres ;
+- `book_snapshot_event_id` vérifié comme snapshot du même marché et token ;
+- `intent_id` persisté, unique par ordre, et cité par les estimations via une
+  FK composite `(order_id, intent_id)` ;
+- `schema_version` ajouté aux tables qui persistent un document versionné ;
+- refus des fills sur un ordre non exécutable ;
+- formats `accounting_unit`, `tx_hash`, SHA-256 et références de payload ;
+- hashes de delta de carnet stockés et cohérents par événement ;
+- conversion exigée quand l'actif de règlement diffère du collatéral ;
+- `random_seed` cohérent avec le JSON d'hypothèses d'exécution.
+
+**Décisions de conception à approuver :**
+
+1. **Cardinalité V1** : une intention produit au plus un ordre ; l'ordre porte
+   l'intention, y compris rejetée. Une intention ne peut pas être réutilisée.
+   Cette règle interdit le fractionnement d'une intention en plusieurs ordres.
+2. **Hashes de delta** : stockés sur chaque ligne de `book_delta_changes` et
+   contraints identiques, plutôt que dans une table d'en-tête. C'est moins
+   normalisé mais évite une table supplémentaire sans besoin applicatif
+   démontré ; une migration vers une table d'en-tête reste possible.
+3. **`schema_version` avec valeur par défaut `1.0.0`** : évite une migration
+   immédiate des barèmes et expériences existants ; la colonne reste NOT NULL.
+4. **A5-06 reste hors SQL/JSON Schema standard** : la comparaison de deux
+   champs n'est pas exprimable en JSON Schema standard. A1/A2 doivent valider
+   la chronologie avant insertion ; les deux tests restent `xfail` documentés,
+   pas masqués. **Mise à jour A5-06 (D-050) :** une extension normative
+   `x-polymarket-chronological-order` est déclarée dans les deux schémas et les
+   deux tests sont devenus verts ; les validateurs standards ignorent
+   l'extension, donc A1/A2 doivent toujours l'appliquer.
+5. **A5-16 reste une barrière applicative** : le SQL ne peut pas imposer la
+   somme nulle et les soldes non négatifs par contrainte déclarative simple
+   sans modifier l'ordre des écritures. A2 doit consulter les vues d'audit.
+
+**Conséquence** : ces corrections ne prononcent pas le gel. Elles doivent être
+approuvées, puis A5 doit relancer la suite et A1/A2 accepter les règles
+sémantiques §5.1 de `ARCHITECTURE.md`.
+
+### D-027 — Propriété de core, des tests et des fixtures — APPROUVÉ EN PRINCIPE POUR PRÉPARATION (2026-10-27)
+A1 possède `src/polymarket_lab/core/` et `tests/unit/core/` ; A2 possède
+`tests/unit/simulation/` et `tests/unit/ledger/` ; A5 possède `tests/labtest/`,
+`tests/integration/`, `tests/accounting/` et les fixtures canoniques. A1 possède
+les fixtures brutes par source sous `tests/fixtures/raw/`. Aucun import de
+`tests/` depuis `src/`. Les fixtures partagées exigent A5 + propriétaire.
+
+**Conséquence** : `COORDINATION.md` et les fiches A1/A2/A5 doivent être mis à
+jour avant tout code. Aucun fichier de production A1/A2 n'est modifié par A0.
+
+### D-028 — Définitions canoniques de core — APPROUVÉ SOUS RÉSERVE (2026-10-27)
+Définitions normatives de `to_micros`, `base_units_to_micros`,
+`canonical_timestamp`, `deterministic_event_id`, `manifest_hash` et
+`config_hash`. `to_micros` rejette les flottants et les précisions non
+représentables ; `canonical_timestamp` exige un datetime UTC aware ;
+`deterministic_event_id` utilise `evt_` + 32 hex SHA-256 et vérifie les
+collisions ; `manifest_hash` retourne 64 hex ; `config_hash` retourne
+`sha256:<64 hex>`.
+
+**Réserve** : A1 doit valider les vecteurs, A2 relire `units.py`, A5 recalculer
+indépendamment. Le détail est dans `ARCHITECTURE.md` §2.
+
+### D-029 — Provenance de accounting_unit — APPROUVÉ EN PRINCIPE POUR PRÉPARATION (2026-10-27)
+Sur un événement de marché, `accounting_unit` est l'unité du notionnel dérivé,
+égale au collatéral du marché à la réception. Sur ordre, estimation, fill et
+posting, elle doit être exactement celle de l'expérience. Aucune conversion
+implicite ; le SQL 0.4 ajoute les triggers d'égalité.
+
+### D-030 — Trades publics et traders inconnus — APPROUVÉ EN PRINCIPE POUR PRÉPARATION (2026-10-27)
+`trade_events` stocke tous les prints publics des marchés observés, pas
+seulement les trois traders. `trader_visibility` vaut `identified` ou
+`unknown` ; `trader_id` est nul si inconnu. `trader_activity_events` exige un
+trader enregistré. Aucun sentinel, aucune inférence.
+
+### D-031 — Reconstruction du carnet — APPROUVÉ SOUS RÉSERVE (2026-10-27)
+Vue décision en ordre de réception ; vue d'audit en ordre source. Snapshot
+obligatoire avant delta ; séquence contiguë ou `GAP` ; hash source comparé
+seulement si l'algorithme est connu ; hash interne séparé ; delta tardif non
+rétroactif ; cutoff de réception. Un carnet dont l'ordre n'est pas établi est
+`DEGRADED`, jamais présenté comme fiable. Q-010 reste ouverte.
+
+### D-032 — Estimation et résultat rejeté missing_book — APPROUVÉ EN PRINCIPE POUR PRÉPARATION (2026-10-27)
+`execution_estimate.order_id` est obligatoire. `execution_result.estimate` peut
+être nul uniquement pour `rejected` + `missing_book`. Ajout des motifs
+`incomplete_book` et `ambiguous_fee_schedule`. `accepted` reste un état d'ordre
+intermédiaire, pas un résultat terminal. Aucun snapshot fictif.
+
+### D-033 — Modèle de frais V1 — APPROUVÉ SOUS RÉSERVE (2026-10-27)
+Formules autorisées : `none`, `linear_min_price_1mp`, `notional`. `per_share`
+et `custom` sont suspendus. Frais prélevés uniquement en collatéral ;
+`outcome_token` est suspendu. Arrondi une fois par fill, incrément explicite.
+Sélection par spécificité, période d'effet et date de consultation antérieure à
+la décision. `not_required` est retiré. Q-011 reste ouverte.
+
+### D-034 — Comptabilité, coût moyen, valorisation et VOID — APPROUVÉ EN PRINCIPE POUR PRÉPARATION (2026-10-27)
+Une transaction par fill, frais inclus. Aucune transaction `kind='fee'` séparée
+avec `ref_type='fill'` n'est admise en V1. Coût moyen pondéré, frais en charge
+séparée, PnL réalisé hors frais. Valorisation inconnue représentée par des
+champs nuls avec `valuation_method='none'` et une table `position_valuations`.
+Aucun règlement VOID sans règle officielle sourcée ; Q-012 reste ouverte.
+
+### D-035 — Séparation fixtures / données réelles — APPROUVÉ EN PRINCIPE POUR PRÉPARATION (2026-10-27)
+Base de test séparée ; `data_manifests.source_class` (`fixture`, `recorded`,
+`live`) ; `final_test` interdit les fixtures. Fixtures versionnées sous
+`tests/fixtures/`, payloads réels sous `data/raw/` non commités.
+
+### D-036 — Version du normaliseur et remplacements — APPROUVÉ EN PRINCIPE POUR PRÉPARATION (2026-10-27)
+`normalizer_version` obligatoire dans l'enveloppe 1.1.0. Table append-only
+`event_replacements` ; le nouvel événement ne modifie jamais l'ancien. Vue
+`v_current_market_events`.
+
+### D-037 — Packaging et stratégie SQLite — APPROUVÉ SOUS RÉSERVE (2026-10-27)
+`pyproject.toml`, versions épinglées, lock avec hashes, extras test/dashboard/
+research. Python non élargi avant matrice de tests. SQLite : un seul service
+écrivain, `BEGIN IMMEDIATE`, WAL, `foreign_keys=ON`,
+`recursive_triggers=ON`, dashboard en lecture seule. `httpx` n'est pas retenu
+tant qu'il n'est pas installé et validé ; `requests` reste le client V1.
+
+### D-038 — Cohérence contrats/SQL/docs/tests — APPROUVÉ EN PRINCIPE POUR PRÉPARATION (2026-10-27)
+Contrats `1.1.0`, migration SQL `0.4`, exemples/docs/tests alignés. Aucun gel.
+Les écarts de version et les CHECK de format sont corrigés.
+
+### D-039 — Hypothèses d'exécution V1 — APPROUVÉ SOUS RÉSERVE (2026-10-27)
+Latence `fixed` ou `uniform` uniquement ; `normal` retiré. RNG déterministe par
+sous-seed SHA-256 dépendant de `(master_seed, intent_id, purpose)`, indépendant
+de Python. Haircut par niveau avec arrondi floor ; `max_depth_levels=null`
+illimité ; âge vérifié à l'arrivée ; limite BUY = maximum, SELL = minimum.
+
+### D-040 — Versionnement pré-gel et compatibilité 1.1.0 — APPROUVÉ (2026-10-27)
+Pendant la phase pré-gel, les contrats ne sont pas des interfaces stables et
+aucun consommateur externe ne les utilise. Une extension compatible reste une
+version mineure. Une version mineure peut aussi contenir des changements
+incompatibles, à condition qu'ils soient documentés, testés et accompagnés
+d'une déclaration explicite de compatibilité. Après gel, la règle SemVer stricte
+s'applique : ajout de champ optionnel = mineure ; changement de type, d'unité,
+de sémantique, retrait d'énumération ou ajout de champ obligatoire = majeure.
+
+Les contrats `1.1.0` ne sont **pas rétrocompatibles** avec `1.0.0` au sens de la
+validation : les documents `1.0.0` restent des archives lisibles, mais ne
+valident pas le schéma `1.1.0` et aucun producteur `1.0.0` n'est compatible
+sans migration. Cette incompatibilité est assumée avant gel, sans consommateur
+externe stable à la date du 2026-10-27. `strategy_hypothesis` reste `1.0.0`
+parce que son contrat n'est pas modifié.
+
+### D-041 — Clôture B-04 et fabrique de connexion — VALIDÉ (2026-10-27)
+B-04 est clos : fabrique unique `open_connection`, vérification des pragmas
+effectifs, WAL obligatoire pour toute écriture sur fichier, `transaction()` en
+`BEGIN IMMEDIATE`, tests append-only et garde AST. À la clôture : 535 tests
+réussis, 2 xfail A5-06. Aucun contrat JSON ni schéma SQL n'a été modifié pour
+B-04. B-04 n'est rouvert qu'en cas de régression ou d'échec démontré.
+
+### D-042 — Identité d'événement v2 — PRÉPARÉ (2026-10-27)
+Formule `event-id/v2` : source, ancrage (`source_event_id` prioritaire, sinon
+`raw_payload_sha256`), type, marché, token, `source_timestamp` et
+`normalizer_version`. `event_identity_version='v2'` est obligatoire en 1.2.0.
+Unicité par `(source, source_event_id, event_type, normalizer_version)` et
+trois index de repli raw. Les lignes legacy v1/NULL ne sont ni recalculées ni
+réécrites. Un reparse exige un bump de `normalizer_version`.
+
+### D-043 — Canonical JSON, manifeste et config hash v2 — PRÉPARÉ (2026-10-27)
+`canonical-json/v1` strict (UTF-8, clés triées/ASCII, entiers, refus
+float/NaN/Infinity et clés dupliquées). `manifest/v2` couvre l'en-tête, les
+`event_ids` triés et les `replacements` triés
+`[old_event_id, new_event_id, visible_from]`. Le manifeste est scellé par
+`manifest_seals` ; aucun manifeste n'est lisible sans seal valide.
+`config/v2` stocke une projection immuable `experiment_config_json` incluant
+`code_version` et `config_hash_version`, excluant
+`config_hash/status/created_at/completed_at`. Les manifestes legacy portent
+`legacy/v1` et ne sont jamais scellés rétroactivement.
+
+### D-044 — RNG v2 et `intent_id` — PRÉPARÉ (2026-10-27)
+`polymarket-lab/rng/v2` : sous-seed
+`SHA-256(canonical_json([DOMAIN, master_seed, intent_id, purpose]))`, compteur
+`u64`, rejet modulo, bornes inclusives, `span` dans `1..2^64`, purposes
+`latency`/`control`, un tirage logique par couple. `fixed` ne tire pas et impose
+un jitter nul. `intent_id` est dérivé de `(experiment_id, idempotency_key)`.
+`rng/v1` reste archivé et testé.
+
+### D-045 — Découpage des migrations P0 — PRÉPARÉ (2026-10-27)
+`0005_p0_foundations.sql` (0.4 → 0.5) porte B-01/B-02/B-05 ;
+`0006_p0_ledger.sql` (0.5 → 0.6) porte B-06. Le runner accepte un registre
+`3→0004`, `4→0005`, `5→0006`, vérifie source, journal et cible, exige une
+sauvegarde et restaure la base en cas d'échec. Les noms de sauvegarde sont
+rendus uniques par suffixe si deux migrations tombent dans la même seconde.
+La provenance d'une conversion exige une transaction de la même expérience,
+`ref_type='market_resolution'`, `ref_id=resolution_event_id` et
+`kind='settlement'` ; un ajustement seul est refusé. Aucune migration candidate
+n'est exécutée sur la base de travail.
+
+### D-046 — Monotonie des remplacements (C-01) — PRÉPARÉ (2026-10-27)
+Pour `O→N`, `visible_from >= current_from(O)` et
+`visible_from < min(visible_from des sortants de N)`. Les cycles sont refusés.
+Les règles sont portées par des triggers SQL, pas seulement par l'API. Une
+collision `INSERT OR REPLACE` est refusée par un trigger `BEFORE INSERT`, même
+si `recursive_triggers` est désactivé. Le cas A→B à 3 s puis B→C à 2 s est
+refusé ; A→B à 2 s puis B→C à 3 s est accepté.
+
+### D-047 — Horloge de confiance (C-02) — PRÉPARÉ (2026-10-27)
+`created_at` et `visible_from` sont générés par la couche de stockage via une
+horloge UTC injectée (`storage.clock`). L'API d'écriture n'accepte pas
+`visible_from`. SQL impose l'égalité
+`visible_from = max(old.received, new.received, created_at)` et
+`created_at >= max(old.received, new.received)`. Les dates legacy ne sont pas
+fabriquées.
+
+### D-048 — Scellement obligatoire (C-03) — PRÉPARÉ (2026-10-27)
+Aucune lecture as-of d'un manifeste sans `manifest_seals` valide. Le seal exige
+`manifest_hash = data_manifests.sha256`, des comptages égaux aux listes et
+l'ensemble complet des remplacements. Les listes sont immuables après seal ; le
+seal est append-only. Les collisions `INSERT OR REPLACE` sur les manifestes et
+leurs listes sont refusées même avec `recursive_triggers` désactivé. Un
+manifeste legacy n'est pas scellable rétroactivement.
+
+### D-049 — Versionnement des candidats P0 — PRÉPARÉ (2026-10-27)
+**Décision initiale, avant A5-06 :** les contrats `market_event`, `execution`
+et `experiment` passent à `1.2.0` ; `fee_schedule` devait rester `1.1.0` et
+`strategy_hypothesis` restait `1.0.0`. Le schéma SQL candidat était `0.5`,
+puis `0.6`. Les versions `1.1.0`/`0.4` restent les références auditées et ne
+sont pas modifiées en place. Le statut de ces candidats est PRÉPARÉ, pas gelé.
+
+> **Mise à jour A5-06 (D-050) :** `fee_schedule` passe à `1.2.0` pour porter
+> l'extension chronologique. La référence auditée `1.1.0` reste l'historique
+> Git ; aucun document `1.1.0` n'est réécrit sous le même numéro.
+
+### D-050 — Chronologie JSON/SQL (A5-06) — PRÉPARÉ (2026-10-27)
+La règle existante du SQL est rendue explicite côté contrat :
+`effective_to > effective_from` pour `fee_schedule` et
+`period.end_time > period.start_time` pour `experiment`. Les bornes égales sont
+refusées ; une fin nulle est admise ; une fin absente n'est admise que si le
+champ n'est pas requis (`fee_schedule.effective_to`), tandis que
+`experiment.period.end_time` reste requis mais peut être nul.
+
+JSON Schema 2020-12 ne permet pas de comparer deux champs. Les schémas
+déclarent l'extension `x-polymarket-chronological-order` et le validateur
+consommateur **doit** l'appliquer ; un validateur standard l'ignore. Le point
+d'entrée applicatif est
+`src/polymarket_lab/validation/contracts.py::validate_contract` (schéma puis
+extension) ; les tests sont dans `tests/unit/test_contract_validation.py` et
+`tests/REPORT_A0_A5_06_FIX.md`.
+
+`fee_schedule` passe de `1.1.0` à `1.2.0` pour ne pas modifier en place une
+version auditée. `experiment` reste `1.2.0` (candidat non gelé). Cette décision
+complète D-026 point 4 et D-049 ; elle ne prononce aucun gel.
+
+### D-051 — Validation applicative et migration 0007 — PRÉPARÉ (2026-10-27)
+`validate_contract(document, schema, schema_validator)` est le point d'entrée
+commun : il applique le validateur JSON Schema fourni, puis
+`chronology_errors`. Aucun consommateur ne doit utiliser un validateur standard
+seul sur un schéma qui déclare l'extension.
+
+La migration candidate `0007_contract_sql_alignment.sql` (0.6 → 0.7) aligne
+SQLite sur le contrat : `research`, `validation` et `final_test` exigent
+`end_time IS NOT NULL` ; `paper_live` peut rester ouverte ; une fin existante
+reste strictement postérieure au début. Elle fixe aussi les défauts
+`schema_version` à `1.2.0` sans réécrire les versions historiques. Le préflight
+compte les lignes incompatibles et refuse la migration avant toute
+reconstruction. Les migrations `0005`/`0006` ne sont pas modifiées.
+
+Le validateur est un module applicatif, mais aucun writer d'expériences ou de
+barèmes n'existe encore dans `src/` : le branchement à un point d'écriture réel
+reste une obligation d'A1/A2 avant tout usage en production. Aucun gel.
+
+### D-052 — Parcours commun d'écriture A1/A2 — PRÉPARÉ (2026-10-27)
+`storage.contract_writer` expose `ContractSpec`, `write_experiment` et
+`write_fee_schedule`. Le parcours impose, dans l'ordre : schéma JSON,
+chronologie, version épinglée du contrat, contrôles métier documentés,
+transaction SQLite, relecture et comparaison de la ligne persistée. Les erreurs
+sont catégorisées (`schema`, `chronology`, `version`, `business`, `sql`,
+`persistence`) et aucune ligne n'est écrite avant validation complète.
+
+Le writer persiste explicitement `schema_version` et n'utilise pas les défauts
+SQL. Il exige `period.end_time` pour `paper_live`, même nul, avant insertion.
+Il ne met pas à jour les lignes historiques et ne remplace aucune version.
+Le branchement à un writer A1/A2 réel reste à faire ; les `INSERT` SQL directs
+peuvent encore contourner ce parcours. Voir `WRITER_INTEGRATION.md`.
+
+Cette décision ne prononce aucun gel.
+
+### D-053 — Durcissement du writer commun — PRÉPARÉ (2026-10-27) — partiellement remplacé par D-054
+> **Note 2026-10-27 (post-audit A5).** Les mécanismes
+> `ContractSpec.for_tests` et `allow_test_specs=True` décrits ci-dessous sont
+> remplacés par le parcours séparé de D-054. Le reste (connexion, registre,
+> erreurs, transactions) est conservé et renforcé.
+
+Le writer exige une connexion issue d'`open_connection` : `foreign_keys=ON`,
+`recursive_triggers=ON`, `isolation_level=None` et aucune transaction
+appelante active. Ces propriétés sont vérifiées avant toute validation et ne
+sont jamais modifiées implicitement.
+
+Les schémas de production proviennent du registre
+`validation/registry.py` (nom, version, SHA-256). `ContractSpec.from_approved`
+charge le schéma approuvé ; `ContractSpec.for_tests` est explicite et refusé
+par les writers sauf `allow_test_specs=True` réservé aux tests. Un schéma
+falsifié, un `ContractSpec` mal formé et une exception du validateur sont
+rejetés par des erreurs catégorisées, avec conservation de la cause.
+
+La validation schéma/chronologie/version est centralisée dans
+`validation/contracts.py::contract_issues`. Les erreurs sont distinguées :
+`spec`, `approval`, `connection`, `schema`, `chronology`, `version`,
+`business`, `validator`, `sql`, `persistence`.
+
+Une baseline `schemas/migrations/SHA256SUMS` et un test vérifient l'identité
+des migrations présentes. Elle ne remplace pas Git : tant que les migrations et
+la baseline ne sont pas suivies par Git, la non-modification historique n'est
+pas prouvée formellement.
+
+Aucun gel n'est prononcé.
+
+### D-054 — Approbation intrinsèque et contrôles SQLite — PRÉPARÉ (2026-10-27)
+Le writer normal n'accepte plus ni schéma, ni validateur, ni
+`allow_test_specs` de l'appelant. Il recharge le registre à chaque écriture,
+vérifie le SHA-256 et la version, gèle profondément le schéma et construit un
+`SystemSchemaValidator` interne. Le registre public est une vue en lecture
+seule ; le writer consulte une donnée privée pour qu'une réassignation de la
+vue publique ne change pas l'approbation. Le parcours de test est un module
+distinct (`contract_writer_testing`) qui ne constitue pas une frontière de
+sécurité contre du code Python arbitraire.
+
+La connexion doit être exactement `sqlite3.Connection`, avec un `row_factory`
+`None` ou `sqlite3.Row`, `foreign_keys=ON`, `recursive_triggers=ON`,
+`ignore_check_constraints=OFF`, `isolation_level=None` et aucune transaction
+active. Le writer ne modifie aucun pragma.
+
+L'ordre de validation est schéma → chronologie → version. Une erreur
+`schema_version` n'est classée `version` que si elle concerne le champ racine.
+Un document sans `period` et sans `schema_version` produit d'abord une erreur
+de schéma pour `period`.
+
+`SystemSchemaValidator` est un sous-ensemble JSON Schema fail-closed. C'est un
+candidat Option B, pas une décision de production : l'ajout de `jsonschema`
+(Option A) ou l'adoption de ce validateur interne (Option B) reste une décision
+du propriétaire. L'intégration A1/A2 en production reste bloquée tant que ce
+choix n'est pas fait. Aucune dépendance de production n'a été modifiée.
+
+La baseline `SHA256SUMS` identifie explicitement les migrations couvertes,
+épingle l'empreinte du manifeste dans le test et distingue intégrité relative
+et historique Git. Un acteur qui modifie migration, manifeste, test et
+constante peut produire un état cohérent ; la preuve d'historique exige un
+commit Git de référence conservé par le propriétaire.
+
+Aucun gel n'est prononcé.
+
+### D-055 — Levée des conditions A5-C2 du candidat — PRÉPARÉ (2026-10-27)
+`SystemSchemaValidator` refuse explicitement `multipleOf` à la construction.
+La sémantique décimale divergeait de `jsonschema` sur `0.3` et
+`0.30000000000000004` avec `multipleOf: 0.1` ; aucun schéma approuvé n'utilise
+ce mot-clé. Un futur contrat qui l'utilise est refusé comme inutilisable, pas
+interprété partiellement.
+
+Les `$ref` sont limitées aux pointeurs locaux `#/...`. À la construction, la
+cible doit être un schéma objet valide ; les cibles non-schéma et les cycles de
+références sont refusés. Le contrôle de profondeur à l'exécution reste une
+défense secondaire. Ce choix est fail-closed et documenté comme un
+sous-ensemble, pas comme JSON Schema complet.
+
+La vérification finale d'approbation reste **dans** la transaction, après
+`BEGIN IMMEDIATE` et juste avant l'INSERT. Ce comportement est correct : il
+réduit la fenêtre entre la dernière relecture du fichier et l'insertion, et un
+échec annule la transaction sans ligne. Il ne verrouille ni le fichier ni le
+registre et ne constitue pas une garantie de concurrence. La documentation
+décrit désormais exactement cet ordre.
+
+Les tests couvrent `ContractSchemaUnreadableError`, `ContractSchemaMismatchError`,
+les références valides/invalides/cycliques, `multipleOf` et la position de la
+vérification finale. Aucune dépendance de production n'est modifiée et aucun
+gel n'est prononcé.
 
 ## Questions ouvertes (non tranchées)
 
@@ -306,10 +680,11 @@ signale mais ne tranche pas.
 
 ### Q-003 — Unité de prélèvement des frais
 Les frais sont-ils prélevés en USDC, en parts, ou les deux selon le marché ?
-Le schéma supporte `collateral` et `outcome_token`, mais la règle réelle doit
-être vérifiée. L'arrondi exact reste à documenter. Si un prélèvement en parts
-peut rendre une position négative (vente totale), la règle officielle de
-conversion ou de rejet doit être documentée avant d'activer ce mode.
+Le schéma 0.4 ne supporte que `collateral` en V1 ; `outcome_token` est suspendu
+avec Q-011. La règle réelle doit être vérifiée. L'arrondi exact reste à
+documenter. Si un prélèvement en parts peut rendre une position négative (vente
+totale), la règle officielle de conversion ou de rejet doit être documentée
+avant d'activer ce mode.
 
 ### Q-004 — Positions ouvertes en fin d'expérience
 Une expérience historique doit-elle liquider les positions au dernier prix
@@ -342,3 +717,23 @@ marché collatéralisé en pUSD règle en USDC natif ? Le schéma exige une
 `conversion_rule` si les actifs diffèrent, mais aucune valeur n'est supposée.
 A1/A2 doivent documenter la règle officielle et la dater avant tout PnL net
 définitif.
+
+### Q-010 — Sémantique des séquences et hashes de carnet
+Quelle est la signification exacte de `sequence_number`, des hashes source et
+de leur portée (par flux, par token, par côté) chez chaque source ? Tant que
+ce n'est pas documenté, le reconstructeur marque l'état `DEGRADED` lorsqu'il ne
+peut pas établir l'ordre ou vérifier le hash. Aucun carnet n'est présenté comme
+fiable dans ce cas.
+
+### Q-011 — Base des frais `per_share` et frais en parts
+`rate_micros` est un taux (`1 000 000 = 100 %`) ; il ne peut pas servir à la
+fois de taux et de montant par part. `per_share` et `outcome_token` sont
+suspendus en V1. Toute réintroduction exige soit un champ
+`fee_per_share_micros` ou `rate_basis`, soit une règle de conversion
+collatéral → parts sourcée, datée et testée.
+
+### Q-012 — Règlement VOID
+Quelle règle officielle définit le payout d'un marché `VOID` (0, remboursement,
+autre) et à quel moment ? Aucun règlement VOID n'est produit sans
+`void_rule_ref` sourcé. Un événement VOID sans payout peut être stocké, mais
+A2 ne doit pas écrire de transaction de settlement.

@@ -1,8 +1,11 @@
 # ARCHITECTURE.md
 # Polymarket Strategy Research Lab — Architecture technique
 
-- **Version :** 0.2 — revue A0 du 2026-10-26
-- **Statut :** proposition à valider par le propriétaire. Les contrats `1.0.0` et le schéma SQL `0.2` ne sont pas gelés.
+- **Version :** 0.5 — candidat P0 après alignement contrats/SQL (2026-10-27)
+- **Statut :** proposition à valider par le propriétaire. Les contrats `1.2.0`
+  et les migrations `0005`/`0006`/`0007` sont des **candidats non gelés et non
+  exécutés**. Les références auditées restent les contrats `1.1.0` et le schéma
+  SQL `0.4` ; elles ne sont pas modifiées en place.
 - **Cible :** PC Windows, développement local, paper trading uniquement.
 - **Principe :** monolithe modulaire ; les composants doivent rester séparables.
 
@@ -103,18 +106,89 @@ Règles :
 ### 2.3 Identifiants et idempotence
 
 - `event_id` est **déterministe** pour un enregistrement source donné.
-  Recommandation A0 : `evt_` + SHA-256 tronqué de
-  `(source, source_event_id ou contenu canonique, market_id, token_id,
-  source_timestamp)`. A1 doit documenter la formule exacte.
+  Formule 1.2.0 (`event-id/v2`) : `evt_` + 32 premiers hex de
+  `SHA-256(canonical_json([...]))`, avec
+  `["polymarket-lab/event-id/v2", source, anchor, event_type, market_id,
+  token_id, source_timestamp, normalizer_version]` et
+  `anchor = source_event_id` si présent, sinon `raw_payload_sha256`.
+  `event_identity_version` vaut `v2` pour un document 1.2.0. Les événements
+  legacy v1 restent lisibles sans recalcul ; les lignes de version inconnue
+  restent `NULL`.
 - `(source, source_event_id)` est unique lorsqu'il existe. Un redémarrage ou une
   reconnexion ne doit pas créer un doublon.
+- Unicité v2 : `(source, source_event_id, event_type, normalizer_version)` pour
+  un ancrage `source_event_id` ; trois index de repli couvrent
+  `(source, raw_payload_sha256, event_type, normalizer_version,
+  source_timestamp, market_id?, token_id?)` avec token, marché seul ou sans
+  marché. Un reparse exige un bump de `normalizer_version`. L'index legacy v1
+  reste partiel et ne garantit rien rétroactivement pour les replis raw.
 - Les doublons **inter-sources** (même trade vu par REST et WebSocket) ne sont
   pas garantis par cette contrainte. Ils doivent être détectés et signalés
   (`cross_source_duplicate`), pas fusionnés arbitrairement.
 - Chaque ordre porte une `idempotency_key` unique par expérience.
 - Chaque fill est unique par `(order_id, fill_index)`.
-- Chaque transaction du grand livre porte une `idempotency_key` unique et une
-  contrainte `(ref_type, ref_id, kind)`.
+- Chaque transaction du grand livre porte une `idempotency_key` unique. Le
+  schéma 0.4 la contraint globalement avec `(ref_type, ref_id, kind)` ; le
+  candidat 0.6 isole les deux unicité par expérience :
+  `(experiment_id, idempotency_key)` et
+  `(experiment_id, ref_type, ref_id, kind)`.
+
+### 2.3.1 Définitions normatives de `core/` (D-028)
+
+```text
+canonical_json(x) = json.dumps(x, sort_keys=True, separators=(",", ":"),
+                               ensure_ascii=False, allow_nan=False).encode("utf-8")
+```
+
+`canonical-json/v1` est UTF-8 sans BOM, clés ASCII pour les structures hachées,
+entiers uniquement, refus des `float`/`NaN`/`Infinity`, refus des clés
+dupliquées (`object_pairs_hook`) et des valeurs non finies. `manifest/v2` et
+`config/v2` impliquent `canonical-json/v1`.
+
+**`to_micros(value, unit_decimals, *, rounding="half_even") -> int`**
+- Accepte `Decimal`, `int`, `str` ; refuse `float`, `bool`, `NaN`, `Infinity`.
+- `unit_decimals` dans `[0, 18]`.
+- `scaled = Decimal(value) * 10**unit_decimals` ; si non entier, rejet : on ne
+  cache pas une précision que l'unité ne possède pas.
+- `micros = scaled * 10**(6-unit_decimals)` ; arrondi explicite si nécessaire.
+- Résultat int64 ; les bornes métier sont vérifiées par l'appelant.
+
+**`base_units_to_micros(raw_units: int, unit_decimals: int) -> int`** traite
+les entiers natifs de source : exact si `unit_decimals <= 6`, arrondi explicite
+si `unit_decimals > 6`. Aucun `float` n'est accepté.
+
+**`canonical_timestamp(dt)`** exige un `datetime` aware en UTC
+(`utcoffset() == 0`), refuse un datetime naïf ou un offset non UTC, et retourne
+`YYYY-MM-DDTHH:MM:SS.ffffffZ`. Un adaptateur qui reçoit un offset le convertit
+explicitement et journalise le fuseau source.
+
+**`deterministic_event_id` (v2)** : identité canonique
+`["polymarket-lab/event-id/v2", source, anchor, event_type, market_id,
+token_id, canonical_timestamp(source_timestamp), normalizer_version]`, avec
+`anchor = source_event_id` prioritaire, sinon `raw_payload_sha256` (64 hex
+minuscules) obligatoire. Résultat : `evt_` + 32 premiers hex du SHA-256. A1
+vérifie les collisions ; un identifiant existant avec une autre identité est
+une erreur. `event-id/v1` reste archivé pour les lignes legacy.
+
+**`manifest_hash` (v2)** : SHA-256 du canonical JSON de
+`{"header": ..., "event_ids": [...], "replacements": [...]}`. Le header contient
+`hash_version`, `canonical_json_version`, `manifest_id`,
+`cutoff_received_timestamp`, `filters` (sources, market_ids, token_ids,
+event_types triés, `notes`), `event_count`, `replacement_count`,
+`event_id_algorithm`, `schema_versions` et `source_classes`. `event_ids` et
+`replacements` sont triés et sans doublon ; un remplacement est
+`[old_event_id, new_event_id, visible_from_received_timestamp]`. Retourne 64
+hex, stocké dans `data_manifests.sha256`. Le hash fige l'ensemble, pas l'ordre
+de rejeu. Tout manifeste lisible exige un `manifest_seals` valide.
+
+**`config_hash` (v2)** : SHA-256 de la projection immuable stockée dans
+`experiments.experiment_config_json`, sans `config_hash`, `status`,
+`created_at`, `completed_at` ; `code_version` et `config_hash_version` sont
+inclus. Retourne `sha256:<64 hex>`. Les lignes legacy portent
+`config_hash_version='legacy/v1'` et aucun document n'est inventé.
+
+Les détails et vecteurs d'or sont testés par A1 et A5 ; A2 relit
+`core/units.py`.
 
 ### 2.4 Devise, unité comptable, actif de règlement
 
@@ -130,6 +204,13 @@ Trois notions distinctes, jamais confondues :
 Règles :
 
 - Aucune conversion implicite, y compris 1:1 entre pUSD et USDC.
+- Provenance (D-029) : sur un événement de marché, `accounting_unit` est l'unité
+  du notionnel dérivé et doit égaler le collatéral du marché à
+  `received_timestamp` ; si la métadonnée manque, A1 rejette avec
+  `metadata_missing`, sans valeur par défaut. Sur ordre, estimation, fill et
+  posting, elle doit être exactement celle de l'expérience. Le SQL (0.4, puis
+  candidats 0.5/0.6/0.7) ajoute des triggers d'égalité ; A1/A2 ne dupliquent
+  pas la règle.
 - Si l'unité comptable diffère de l'actif de règlement, l'événement de
   résolution porte une `conversion_rule` sourcée, datée et versionnée
   (`verified`, `provisional` ou `unverified`).
@@ -144,8 +225,33 @@ Règles :
 
 - Les contrats sont **stricts** (`additionalProperties: false`).
 - Chaque document persisté porte `schema_version`.
-- Un ajout de champ est une nouvelle version mineure ; un changement de type,
-  d'unité ou de sémantique est une version majeure.
+- `schema_version` est la version du contrat ; `source_schema_version` est la
+  version du format amont ; `normalizer_version` est la version du code de
+  normalisation. Ces trois valeurs ne sont pas interchangeables.
+- **Phase pré-gel (D-040)** : les contrats ne sont pas des interfaces stables et
+  aucun consommateur externe ne les utilise. Une extension compatible reste une
+  version mineure. Une version mineure peut aussi inclure des changements
+  incompatibles, à condition qu'ils soient documentés, testés et accompagnés
+  d'une déclaration de compatibilité explicite.
+- **Après gel (SemVer strict)** : un ajout de champ optionnel est une version
+  mineure ; un changement de type, d'unité ou de sémantique, un retrait
+  d'énumération ou un ajout de champ obligatoire est une version majeure.
+- La version 1.1.0 ajoute des champs obligatoires (`normalizer_version`,
+  `trader_visibility`, `order_id` dans l'estimation, incrément d'arrondi) et
+  retire des énumérations suspendues (`per_share`, `custom`, `outcome_token`,
+  `not_required`, latence `normal`). **Compatibilité déclarée :** les documents
+  1.0.0 restent des archives lisibles, mais ne sont pas valides sous 1.1.0 ;
+  aucun producteur 1.0.0 n'est compatible sans migration. Cette rupture est
+  assumée avant gel, sans consommateur externe stable au 2026-10-27. Les lignes
+  legacy restent lisibles sans valeurs inventées.
+- **Candidat 1.2.0 (non gelé)** : `market_event`, `execution`, `experiment` et
+  `fee_schedule` passent à `1.2.0`. Ajouts obligatoires pour les trois premiers :
+  `event_identity_version='v2'`, ancrage `source_event_id` ou
+  `raw_payload_sha256`, `rng_implementation='polymarket-lab/rng/v2'`,
+  `config_hash_version='config/v2'`. `fee_schedule` porte l'extension
+  chronologique A5-06. `strategy_hypothesis` reste `1.0.0`. Aucun document
+  1.1.0 audité n'est modifié en place : la correction de `fee_schedule` est
+  publiée comme version 1.2.0 (D-050).
 - Les payloads bruts non normalisés ne sont jamais consommés par les modules
   cœur : ils sont conservés à part et référencés par `raw_payload_ref` +
   `raw_payload_sha256`.
@@ -195,6 +301,14 @@ incidents de qualité.
 
 - Un normaliseur par source. Aucun mapping générique n'est supposé entre Gamma,
   CLOB, Data API et flux temps réel.
+- Chaque événement porte `normalizer_version` (code) en plus de
+  `schema_version` (contrat) et `source_schema_version` (amont). Une correction
+  de parsing crée un nouvel `event_id` et une ligne append-only dans
+  `event_replacements` ; l'ancien événement n'est jamais modifié.
+- `trade_events` reçoit tous les prints publics des marchés observés ;
+  `trader_visibility` vaut `identified` (trader_id non nul) ou `unknown`
+  (trader_id nul). Aucun sentinel ni inférence. `trader_activity_events` exige
+  un trader enregistré.
 - Convertir en micro-unités avec `Decimal`.
 - Normaliser les timestamps en UTC canonique.
 - Valider le contrat avant écriture.
@@ -339,7 +453,38 @@ Règles :
 
 ## 5. Stockage local et invariants
 
-Le schéma complet est dans `schemas/initial_db_schema.sql` (version 0.2).
+Le schéma de référence est `schemas/initial_db_schema.sql` (base 0.3,
+`PRAGMA user_version = 3`) puis `schemas/migrations/0004_consolidation.sql`
+(cible auditée 0.4, `PRAGMA user_version = 4`). Une base neuve applique la base
+puis les migrations, dans l'ordre ; aucun schéma consolidé n'est dupliqué dans
+le fichier initial.
+
+Les migrations **candidates non approuvées** sont
+`0005_p0_foundations.sql` (0.4 → 0.5, B-01/B-02/B-05),
+`0006_p0_ledger.sql` (0.5 → 0.6, B-06) et
+`0007_contract_sql_alignment.sql` (0.6 → 0.7, fin obligatoire hors
+`paper_live`, défauts `schema_version=1.2.0`). Elles ne doivent pas être
+appliquées à la base de travail. Le runner généralisé
+(`python schemas/migrations/run_migration.py --database <fichier>`) sélectionne
+la migration suivante dans un registre `3→0004`, `4→0005`, `5→0006`,
+`6→0007`, vérifie la version source, le journal attendu et la version cible,
+sauvegarde la base (`Connection.backup`), restaure la sauvegarde en cas
+d'échec, et restaure toujours `PRAGMA foreign_keys = ON` et
+`PRAGMA recursive_triggers = ON` sur sa connexion. Le préflight de `0007`
+compte les expériences non `paper_live` sans fin et refuse la migration avant
+toute reconstruction. Un échec après le `COMMIT` interne ne peut être annulé
+par `ROLLBACK` : la sauvegarde est alors la seule voie de retour.
+
+Toute connexion applicative passe par
+`polymarket_lab.storage.connection.open_connection` (B-04). La fabrique impose
+et vérifie `foreign_keys=ON`, `recursive_triggers=ON`, `busy_timeout`, WAL
+**obligatoire pour toute écriture sur fichier** et `synchronous` (`NORMAL` par
+défaut, `FULL` configurable). `journal_mode=None` est réservé à `:memory:` et
+à la lecture seule. Aucune connexion
+`sqlite3.connect` directe n'est admise hors de ce module ; le runner de
+migration est la seule exception outillée, avec `foreign_keys=OFF` temporaire
+et restauration vérifiée. Sans `recursive_triggers=ON`, un `INSERT OR REPLACE`
+peut contourner les triggers DELETE append-only.
 
 Groupes de tables :
 
@@ -375,9 +520,134 @@ Invariants :
    `v_experiment_cash`, `v_experiment_positions`, `v_order_execution`,
    `v_ledger_anomalies` et `v_experiment_latest_snapshot` sont la base des
    lectures A4.
+10. `market_events` et ses sept tables de détail sont append-only y compris
+    pour les mises à jour et suppressions directes. `INSERT OR REPLACE`
+    déclenche les triggers DELETE si `PRAGMA recursive_triggers = ON` ; ce
+    pragma est requis à chaque connexion. `INSERT OR IGNORE` reste idempotent.
+11. Un événement, un ordre ou une estimation ne peut référencer que le token
+    de son propre marché : `UNIQUE(market_id, token_id)` sur `market_tokens`
+    et FK composites `(market_id, token_id)`. Le token gagnant d'une
+    résolution appartient au marché résolu.
+12. `book_snapshot_event_id` désigne un `book_snapshot` réel, du même marché et
+    du même token que l'ordre, l'estimation ou le fill. Une FK vers
+    `market_events` seule ne suffit pas.
+13. Cardinalité V1 : une intention (`intent_id`) produit au plus un ordre ;
+    l'ordre porte l'intention, y compris s'il est rejeté. Une estimation cite
+    le couple `(order_id, intent_id)` de son ordre. Une intention ne peut pas
+    être réutilisée par un autre ordre.
+14. Un fill ne peut viser qu'un ordre `accepted`, `partially_filled` ou
+    `filled`. Un ordre `proposed`, `rejected` ou `expired` ne produit aucune
+    écriture d'exécution.
+15. Une résolution réglée dans un actif différent du collatéral du marché
+    exige `conversion_rule_json`. Le SQL impose sa présence, pas la validité
+    de son contenu.
+16. Les hashes `book_hash_before` / `book_hash_after` sont identiques sur
+    toutes les lignes d'un même delta ; ils décrivent le carnet, pas la ligne.
+17. Un événement 1.1.0 ou 1.2.0 porte `normalizer_version`. Un remplacement est
+    une ligne append-only de `event_replacements` ; `v_current_market_events`
+    exclut les événements remplacés.
+18. Les ordres, estimations, fills et postings d'une expérience partagent son
+    `accounting_unit` ; le SQL le vérifie par trigger.
+19. `data_manifests.source_class` vaut `fixture`, `recorded` ou `live`. Une
+    expérience `final_test` ne peut pas utiliser une fixture.
+20. Une valorisation inconnue utilise des champs nuls avec
+    `valuation_method='none'` ; aucun zéro de complaisance.
+21. **C-01** — un remplacement `O→N` exige
+    `visible_from >= current_from(O)` et, si `N` a déjà un remplacement
+    sortant, `visible_from < min(visible_from des sortants de N)`. Les cycles
+    sont refusés. Ces règles sont portées par des triggers SQL, pas seulement
+    par l'API. Un trigger `BEFORE INSERT` refuse toute collision de clé, y
+    compris `INSERT OR REPLACE` lorsque `recursive_triggers` est désactivé.
+22. **C-02** — `created_at` et `visible_from_received_timestamp` sont générés
+    par la couche de stockage à partir d'une horloge UTC injectée
+    (`storage.clock`). L'API d'écriture n'accepte jamais `visible_from`.
+    `visible_from = max(old.received, new.received, created_at)` et
+    `created_at >= max(old.received, new.received)` sont vérifiés en SQL.
+    Limite explicite : un accès SQL direct reste un canal privilégié et ne
+    peut pas prouver l'horloge murale ; seule l'API de stockage garantit
+    l'horodatage.
+23. **C-03** — aucun manifeste n'est lisible par les vues as-of sans un
+    `manifest_seals` valide ; `seal.manifest_hash = data_manifests.sha256`,
+    les comptages doivent correspondre aux listes, et les listes
+    `manifest_events`/`manifest_replacements` sont figées après scellement.
+    Les collisions `INSERT OR REPLACE` sur `data_manifests` et les listes du
+    manifeste sont refusées par trigger `BEFORE INSERT`, même avec
+    `recursive_triggers` désactivé. Limite explicite : un audit privilégié peut
+    lire les tables brutes ; les lectures as-of passent par la vue filtrée par
+    le seal.
+24. Les manifestes et expériences legacy ne sont ni recalculés ni scellés
+    rétroactivement. Une conversion de règlement est rattachée à une seule
+    expérience ; l'unicité du grand livre et des conversions est par
+    expérience (`0006`). Le rattachement exige une transaction de ledger de la
+    même expérience avec `ref_type='market_resolution'`,
+    `ref_id=resolution_event_id` et `kind='settlement'` ; un ajustement seul ne
+    suffit pas. Les collisions `INSERT OR REPLACE` sur
+    `ledger_transactions` et `settlement_conversions` sont refusées par trigger
+    `BEFORE INSERT`, même avec `recursive_triggers` désactivé.
 
 Le schéma SQL est volontairement plus strict que le contrat JSON. Le contrat
 valide la forme d'un document ; le SQL protège les invariants persistés.
+
+### 5.1 Règles sémantiques non exprimables en SQL déclaratif ou JSON Schema
+
+Ces règles restent des barrières applicatives explicites. A1 les applique à la
+normalisation et A2 avant toute écriture ou publication.
+
+- **Ordre canonique du carnet (A5-05)** : bids strictement décroissants, asks
+  strictement croissants, pas de prix dupliqué. A1 trie ou rejette ; le test de
+  contrat caractérise seulement que JSON Schema ne l'impose pas.
+- **Chronologie (A5-06)** : `effective_to > effective_from` et
+  `period.end_time > period.start_time`. JSON Schema 2020-12 ne compare pas
+  deux champs ; les contrats `fee_schedule` et `experiment` déclarent donc
+  l'extension normative `x-polymarket-chronological-order`. Le SQL refuse déjà
+  la chronologie invalide à la persistance. Un validateur JSON Schema standard
+  ignore l'extension : le point d'entrée applicatif
+  `polymarket_lab.validation.contracts.contract_issues` (et
+  `validate_contract`) applique le schéma fourni **puis** l'extension ; les
+  writers A1/A2 doivent passer par lui et refuser le document avant insertion.
+  La fin nulle est admise ; l'absence de fin n'est admise que si le champ n'est
+  pas requis (`fee_schedule.effective_to`), tandis que
+  `experiment.period.end_time` doit être présent et peut être nul.
+- **Écriture contractuelle (A1/A2)** : `storage.contract_writer` expose
+  `write_experiment` et `write_fee_schedule` **sans paramètre de schéma ou de
+  validateur**. Le parcours recharge le registre approuvé à chaque écriture,
+  vérifie le SHA-256 et la version, gèle profondément le schéma et construit
+  un validateur système. Il impose une connexion `open_connection`
+  (`foreign_keys=ON`, `recursive_triggers=ON`,
+  `ignore_check_constraints=OFF`, `isolation_level=None`,
+  `row_factory=sqlite3.Row`), puis validation schéma → chronologie → version →
+  métier, vérification d'approbation, transaction et relecture persistée. Les
+  writers ne doivent pas utiliser `INSERT` direct pour ces documents. Le
+  parcours de test à schéma personnalisé est un module distinct,
+  `storage.contract_writer_testing`, et ne doit pas être importé par A1/A2.
+  Voir `WRITER_INTEGRATION.md`. L'intégration de production reste bloquée par
+  le choix A/B de la dépendance de validation (D-054).
+- **Invariants comptables (A5-16)** : somme nulle par transaction, `CASH >= 0`,
+  quantité de position `>= 0`, pas de short. Le schéma fournit
+  `v_ledger_anomalies`, `v_negative_cash` et `v_position_anomalies` ; A2 doit
+  les consulter dans la même transaction et refuser la publication si elles ne
+  sont pas vides.
+- **Cohérence sémantique des JSON (A5-20, A5-22, A5-23)** : `outcomes_json`
+  est vérifié par trigger pour l'unicité token/index ; la forme détaillée des
+  `levels_json`, `quality_flags_json`, `assumptions_json`, la cohérence
+  estimate/résultat rejeté et les transitions d'état des ordres restent
+  validées par A1/A2 contre les contrats.
+- **Contenu des conversions (A5-21)** : le SQL exige une règle de conversion
+  quand les actifs diffèrent ; la source, la date et le taux sont vérifiés par
+  A1/A2 et restent soumis à Q-009.
+
+### 5.2 États d'un ordre simulé
+
+Transitions autorisées en V1 :
+
+`proposed -> accepted | rejected | expired`
+`accepted -> partially_filled | filled | expired`
+`partially_filled -> filled | expired`
+
+`rejected`, `filled` et `expired` sont terminaux. Le SQL Interdit seulement les
+fills sur un ordre non exécutable ; A2 doit refuser les autres transitions
+invalides. Une correction d'état passe par un nouvel ordre ou une transaction
+de reversal, jamais par une réécriture silencieuse de l'historique comptable.
 
 ## 6. Interfaces entre modules
 
@@ -568,25 +838,32 @@ applique ensuite la conversion explicite, puis comptabilise dans l'unité
 comptable. L'exemple ci-dessus suppose une conversion 1:1 **fictive** ; elle
 doit être vérifiée avant tout PnL net définitif.
 
-Si un frais est prélevé en parts (`fee_charge_unit = outcome_token`), la
-position diminue en quantité et en coût, et la perte correspondante est
-comptabilisée dans `REALIZED_PNL`. Le frais ne crée jamais de cash. Un frais en
-parts ne peut être prélevé que sur une position existante ; si le prélèvement
-rendrait la quantité négative, le fill est rejeté, sauf règle officielle
-vérifiée de conversion en collatéral.
+**V1 suspend les frais en parts** (`fee_charge_unit = outcome_token`) avec
+Q-011 : aucun fill ne peut les produire. Le paragraphe suivant décrit le modèle
+cible si Q-011 est tranchée, mais il ne constitue pas une autorisation V1. Quand
+il sera activé, le frais en parts devra être inclus dans la transaction unique
+du fill, jamais dans une transaction `kind='fee'` séparée (D-034).
+
+Modèle cible : la position diminue en quantité et en coût, et la perte
+correspondante est comptabilisée dans `REALIZED_PNL`. Le frais ne crée jamais de
+cash. Un frais en parts ne peut être prélevé que sur une position existante ;
+si le prélèvement rendrait la quantité négative, le fill est rejeté, sauf règle
+officielle vérifiée de conversion en collatéral.
 
 Sur une cession partielle, le coût retiré est arrondi selon la règle de
 l'expérience ; le dernier lot absorbe le résidu pour que le coût restant soit
 nul après clôture complète. `fees_paid_micros` dans un snapshot ne compte que
-les frais en collatéral ; les frais en parts sont représentés par la réduction
-de position et la perte réalisée.
+les frais en collatéral ; si Q-011 active les frais en parts, ceux-ci seront
+représentés par la réduction de position et la perte réalisée, dans la
+transaction du fill.
 
 ### 7.3 Invariants comptables
 
 1. Somme des `amount_micros` = 0 pour chaque transaction.
 2. `CASH >= 0` ; aucune marge, aucun effet de levier en V1.
 3. Quantité de position `>= 0` ; aucun short implicite.
-4. Un fill produit exactement une transaction, clé `fill:<fill_id>`.
+4. Un fill produit exactement une transaction, clé `fill:<fill_id>`, frais
+   inclus. Aucune transaction `kind='fee'` séparée avec `ref_type='fill'`.
 5. Une résolution produit exactement une transaction, clé
    `resolution:<event_id>`.
 6. Le PnL réalisé ne provient que d'une cession ou d'un règlement.
@@ -627,6 +904,33 @@ de position et la perte réalisée.
 - Aucun PnL net définitif n'est affiché si les frais ou une conversion de
   règlement restent non vérifiés.
 
+### 7.5 Formules V1 et unités (D-033, D-034)
+
+Avec `P = price_micros`, `S = size_micros`, `R = rate_micros` :
+
+- `notional` : `fee_micros = round(R * P * S / 10^12)`.
+- `linear_min_price_1mp` :
+  `fee_micros = round(R * min(P, 10^6-P) * S / 10^12)`.
+- `per_share` et `custom` : **suspendus en V1**.
+- Les frais sont prélevés uniquement en collatéral ; `outcome_token` est
+  suspendu avec Q-011. `fee_amount_micros` et
+  `rounding_increment_micros` sont dans l'unité de prélèvement.
+- Arrondi une fois sur le total du fill ; `rounding_rule` du barème pour les
+  frais, `execution_assumptions.rounding_rule` et
+  `rounding_increment_micros` pour les notionnels, le VWAP et le coût retiré.
+- Sélection : spécificité `market > category > global`, puis
+  `effective_from` le plus récent, puis `source_retrieved_at` le plus récent ;
+  le barème doit être consulté avant `decision_timestamp`. Égalité au sommet =
+  `ambiguous_fee_schedule`, refus.
+- Une transaction par fill, frais inclus. Coût moyen pondéré ; frais en charge
+  séparée ; PnL réalisé hors frais. Vente partielle :
+  `cost_removed = round_half_even(cost * qty_sold / qty_held)` ; vente totale =
+  coût entier ; le dernier lot absorbe le résidu.
+- Valorisation inconnue : `positions_value_micros`, `equity_micros` et
+  `unrealized_pnl_micros` nuls avec `valuation_method='none'` ; le détail par
+  token est dans `position_valuations`. Aucun zéro de complaisance.
+- `VOID` : aucun settlement sans `void_rule_ref` sourcé ; Q-012 reste ouverte.
+
 ## 8. Qualité des données et anti-look-ahead
 
 ### 8.1 Visibilité d'une décision
@@ -638,7 +942,17 @@ vérifiant :
 received_timestamp <= T
 et, si un manifeste est utilisé :
 received_timestamp <= manifest.cutoff_received_timestamp
+et e.event_id IN manifest_events(manifest)
+et aucun remplacement r de manifest_replacements(manifest) avec
+    r.old_event_id = e.event_id et r.visible_from <= T
+et (e.event_id n'est new_event_id d'aucun remplacement du manifeste,
+     ou un tel remplacement a r.visible_from <= T)
+et manifest_seals(manifest) est valide
 ```
+
+Le manifeste ne contient que des remplacements dont les deux extrémités sont
+dans `manifest_events` et dont `visible_from <= cutoff`. Aucun manifeste non
+scellé n'est admissible.
 
 `source_timestamp` sert à l'ordre du marché et au calcul de fraîcheur ; il ne
 sert **jamais** à admettre un événement reçu après `T`. Un événement dont le
@@ -665,10 +979,28 @@ le fill. Si un mode de stress utilise un carnet plus tardif, il doit être
 
 ### 8.4 Générateur aléatoire
 
-Tout tirage (jitter de latence, haircut aléatoire, contrôle contraint) utilise
-un générateur semé. Le seed et l'implémentation exacte
-(`rng_implementation`) sont stockés dans l'expérience. Deux implémentations
-différentes ne sont pas comparables.
+Tout tirage (jitter de latence, contrôle contraint) utilise un générateur semé.
+Le seed et l'identifiant d'implémentation (`rng_implementation`) sont stockés
+dans l'expérience.
+
+Le contrat 1.2.0 utilise `polymarket-lab/rng/v2` :
+
+```text
+DOMAIN = "polymarket-lab/rng/v2"
+seed_bytes = SHA-256(canonical_json([DOMAIN, master_seed, intent_id, purpose]))
+u64(counter) = int.from_bytes(SHA-256(seed_bytes || counter[8 bytes BE])[:8], "big")
+uniform(low, high) = rejet de u64 >= (2**64 // span) * span, puis low + u64 % span
+```
+
+`master_seed` est un entier de `0` à `2^63-1` ; `intent_id` est non vide pour un
+ordre et `""` pour l'expérience ; `purpose` vaut `latency` ou `control` ; `span`
+est dans `1..2^64`. Un seul tirage logique par `(intent_id, purpose)`. Le mode
+`fixed` ne tire pas et impose `latency_jitter_ms=0` ; le haircut est
+déterministe. `intent_id = "intent_" + SHA-256(canonical_json(
+["polymarket-lab/intent-id/v1", experiment_id, idempotency_key]))[:32]`.
+`rng/v1` reste archivé et testé ; aucun résultat v1 n'est recalculé. A1/A2
+implémentent la même fonction, A5 recalcule des vecteurs fixés.
+`random.Random` n'est pas un contrat reproductible.
 
 ### 8.5 Trous et données manquantes
 
@@ -678,7 +1010,35 @@ différentes ne sont pas comparables.
   porte `data_quality_status` (`complete`, `partial`, `stale`, `gap`).
 - Le dashboard et les rapports affichent ces statuts.
 
-### 8.6 Historique des prix ≠ historique des carnets
+### 8.6 Reconstruction du carnet (D-031)
+
+- **Visibilité** : seuls les événements `received_timestamp <= T` et
+  `<= manifest.cutoff_received_timestamp` sont visibles à `T`.
+- **Ordre décision** : `(received_timestamp, source_timestamp, event_id)`.
+  L'ordre `(source_timestamp, received_timestamp, event_id)` est réservé à
+  l'audit et ne doit jamais alimenter une décision.
+- **Snapshot** : initialise ou resynchronise l'état. Un snapshot plus ancien est
+  ignoré avec incident `out_of_order`.
+- **Delta sans snapshot** : état `EMPTY`, incident `missing_book`, aucune
+  profondeur déduite d'un prix.
+- **Séquence** : `seq <= last_seq` = doublon/tardif ignoré ; `seq > last_seq+1`
+  = `GAP`, delta non appliqué jusqu'au snapshot suivant ; `seq == last_seq+1`
+  s'applique.
+- **Hash** : le hash source est opaque. Il n'est comparé que si
+  `book_hash_algorithm` est connu et implémenté ; sinon incident
+  `book_hash_unverifiable` et état `DEGRADED`. Un hash interne SHA-256 vérifie
+  notre reconstruction.
+- **Tardif** : un delta reçu après `T` n'est jamais appliqué rétroactivement à
+  une décision passée ; lors d'une reconstruction ultérieure, il s'applique à
+  son instant de réception.
+- **Côté manquant** : accepté mais marqué `incomplete_book` ; A2 refuse ou
+  applique un haircut explicite.
+- **Coupure** : un delta reçu après le cutoff est exclu. Sans snapshot avant le
+  cutoff, l'état est `missing_book`.
+- Un carnet dont l'ordre ne peut pas être établi est `DEGRADED`, jamais présenté
+  comme fiable. Q-010 reste ouverte.
+
+### 8.7 Historique des prix ≠ historique des carnets
 
 - Un historique de prix (dernier prix, mid, séries de prix) ne contient ni
   profondeur, ni tailles par niveau, ni liquidité exécutable.
@@ -710,16 +1070,12 @@ Le manifeste de données fige l'ensemble des événements utilisables. Un
 manifeste est identifié par son cutoff de réception, ses filtres, son nombre
 d'événements et son SHA-256.
 
-Définition du hash : SHA-256 de l'enchaînement UTF-8, une ligne par `event_id`,
-dans l'ordre de rejeu `(source_timestamp, received_timestamp, event_id)`, après
-application des filtres et du cutoff, précédé d'une ligne d'en-tête contenant
-`manifest_id` et le JSON canonique des filtres. A1 documente la fonction ;
-A5 la recalcule et la compare. Un hash non reproductible invalide l'expérience.
-
-De même, `config_hash` est le SHA-256 du JSON canonique (clés triées, sans
-espaces) de `{strategy_id, version, config_json, execution_assumptions,
-risk_limits, fees, capital, period, data.filters, code_version}`. A1, A2 et A5
-partagent la même fonction.
+Définitions normatives : voir §2.3.1. `manifest_hash` v2 fige l'en-tête, les
+`event_id` triés et les `replacements` triés, pas l'ordre de rejeu. Il exige un
+`manifest_seals` valide pour toute lecture as-of. `config_hash` v2 inclut
+`code_version` et `config_hash_version` et exclut les champs volatils via
+`experiment_config_json`. A1 documente l'implémentation, A5 la recalcule
+indépendamment, A2 la partage. Un hash non reproductible invalide l'expérience.
 
 ## 10. Benchmarks
 
@@ -786,13 +1142,15 @@ une rentabilité.
 
 ## 13. Stack et déploiement local Windows
 
-- Python : 3.15.0 vérifié dans l'environnement local de cette revue.
-  La version doit être verrouillée dans `pyproject.toml` (fichier absent à ce
-  jour) et les dépendances épinglées.
+- Python : 3.15.0 est la seule version testée localement ; `requires-python`
+  doit rester `>=3.15,<3.16` jusqu'à une matrice de tests. Q-007 reste ouverte.
+- `pyproject.toml` (PEP 621) et un lock avec hashes sont requis ; les extras
+  `test`, `dashboard` et `research` séparent les dépendances.
 - `asyncio` + `websockets` pour les flux.
-- Client HTTP : `requests` est synchrone ; dans un collecteur asyncio, utiliser
-  un client asynchrone (`httpx` ou `aiohttp`) ou exécuter les appels dans un
-  thread. Ce point est à trancher par A1.
+- Client HTTP : `requests` est le seul client installé et validé localement ;
+  il doit être exécuté via `asyncio.to_thread` dans un collecteur asyncio.
+  `httpx`/`aiohttp` ne seront ajoutés qu'après installation et validation
+  explicites. Aucune dépendance n'est présentée comme validée sans test local.
 - `pandas`, `numpy`, `scipy` pour l'analyse ; jamais pour les montants du
   ledger.
 - `pytest` pour les tests ; `jsonschema` pour la validation des contrats.
@@ -804,7 +1162,8 @@ une rentabilité.
 
 Points bloquants constatés :
 
-- `requirements.txt` n'est pas épinglé et ne liste pas `jsonschema` ;
+- `requirements.txt` n'est pas épinglé ; `jsonschema` est déclaré dans
+  `tests/requirements-test.txt` comme dépendance de test, pas en production ;
 - `pyproject.toml` est absent alors que `ARCHITECTURE.md` le prévoit ;
 - `configs/app.example.yaml` distingue désormais l'unité comptable, la devise
   de présentation et l'actif de règlement ; l'actif de règlement reste porté
@@ -839,7 +1198,10 @@ polymarket-strategy-lab/
 │   ├── strategy_hypothesis.schema.json
 │   └── examples/
 ├── schemas/
-│   └── initial_db_schema.sql
+│   ├── initial_db_schema.sql   # base 0.3
+│   └── migrations/
+│       ├── README.md
+│       └── 0004_consolidation.sql
 ├── src/
 │   └── polymarket_lab/
 │       ├── core/               # unités, temps, IDs — propriétaire A1
@@ -854,10 +1216,13 @@ polymarket-strategy-lab/
 │       ├── validation/
 │       └── dashboard/
 ├── tests/
-│   ├── unit/
-│   ├── integration/
-│   ├── accounting/
+│   ├── unit/                    # core/ (A1), simulation/ledger (A2)
+│   ├── integration/             # A5
+│   ├── accounting/              # A5
+│   ├── labtest/                 # fixtures et oracles A5
 │   └── fixtures/
+│       ├── raw/                 # payloads amont, propriétaire A1
+│       └── canonical/           # fixtures canoniques, propriétaire A5
 ├── data/                       # local, ignoré par Git
 ├── reports/
 └── logs/                       # local, ignoré par Git
@@ -919,6 +1284,14 @@ Voir `DECISIONS.md` :
 - **D-004 / D-005 / D-006** : restent à confirmer par marché et par source.
 - **D-025** : proposition de gel des contrats ; voir
   `contracts/CONTRACT_FREEZE_PROPOSAL.md`.
+- **D-027 à D-039** : principes de consolidation approuvés pour préparation ;
+  D-028, D-031, D-033, D-037 et D-039 sous réserve. **D-040** : versionnement
+  pré-gel et compatibilité assumée 1.1.0 / 1.0.0. **D-041** : B-04 clos.
+  **D-042 à D-053** : spécifications et fichiers candidats P0 (identité v2,
+  manifestes/config, RNG v2, migrations 0005/0006/0007, C-01/C-02/C-03,
+  validateur applicatif, alignement des fins d'expérience et parcours commun
+  d'écriture) au statut PRÉPARÉ, non approuvés et non exécutés. Q-010 à Q-012 restent ouvertes. Aucun
+  gel n'est prononcé.
 
 Précisions apportées par la vérification documentaire du propriétaire :
 

@@ -1,6 +1,6 @@
 {
-  "schema_version": "1.0.0",
-  "event_id": "evt_fixture_activity_001",
+  "schema_version": "1.2.0",
+  "event_id": "evt_89844ab0abfafb74a2ed9a7da42fb316",
   "event_type": "trader_activity",
   "source": "fixture",
   "source_event_id": "fixture-activity-001",
@@ -20,5 +20,7 @@
     "size_micros": 40000000,
     "tx_hash": "0x1111111111111111111111111111111111111111111111111111111111111111",
     "notes": "Activité fictive pour tests de contrat."
-  }
+  },
+  "normalizer_version": "1.1.0",
+  "event_identity_version": "v2"
 }

@@ -2,7 +2,7 @@
 
 **Mission :** données publiques et stockage local fiable.
 
-**Fichiers autorisés :** `src/polymarket_lab/collectors/`, `normalization/`, `storage/`, tests associés.
+**Fichiers autorisés :** `src/polymarket_lab/core/`, `collectors/`, `normalization/`, `storage/`, `tests/unit/core/`, `tests/fixtures/raw/`, tests associés. D-017/D-027.
 
 **Priorités :** commencer par fixtures et stockage ; vérifier les interfaces officielles avant réseau ; garder timestamps source/réception ; détecter doublons, trous, événements tardifs et déconnexions ; conserver une référence aux payloads bruts utiles.
 
